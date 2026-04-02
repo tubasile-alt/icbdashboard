@@ -1,0 +1,59 @@
+modules = ["python-3.12", "nodejs-20", "web"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backend API"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Backend API"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && python -m uvicorn app.main:app --host localhost --port 8000"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd frontend && npm run dev"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+exposeLocalhost = true
+
+[deployment]
+deploymentTarget = "vm"
+run = ["bash", "-c", "cd frontend && npm run build 2>/dev/null; cd /home/runner/workspace && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 5000 & cd frontend && npm run preview -- --host 0.0.0.0 --port 5001 ; wait"]
+build = ["bash", "-c", "cd frontend && npm install && npm run build && pip install -r backend/requirements.txt"]

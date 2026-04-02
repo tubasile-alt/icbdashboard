@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_sync_loop():
+    await asyncio.sleep(30)
     while True:
         db = SessionLocal()
         try:
