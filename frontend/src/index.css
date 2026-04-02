@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
+.glass {
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.pulse-soft {
+  animation: pulse 2.2s infinite;
+}
