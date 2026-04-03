@@ -45,9 +45,24 @@ def _to_int(value) -> int:
 
 
 def process_excel_and_refresh_database(db: Session, excel_path: str, source_file_name: str, source_file_rev: str):
-    raw_df = pd.read_excel(excel_path)
-    raw_df = raw_df.dropna(axis=1, how="all")
-    df = _normalize_columns(raw_df).fillna(0)
+    all_sheets = pd.read_excel(excel_path, sheet_name=None)
+    dfs = []
+    
+    for sheet_name, raw_df in all_sheets.items():
+        raw_df = raw_df.dropna(axis=1, how="all")
+        df = _normalize_columns(raw_df).fillna(0)
+        
+        # Só processar abas que têm as colunas essenciais
+        has_unidade = any(col in df.columns for col in ["unidade", "clinica", "filial"])
+        has_date_or_period = "data" in df.columns or ("ano" in df.columns and ("mes" in df.columns or "mes" in df.columns))
+        
+        if len(df) > 0 and has_unidade and has_date_or_period:
+            dfs.append(df)
+    
+    if not dfs:
+        raise RuntimeError("Nenhuma aba com dados válidos encontrada no arquivo Excel.")
+    
+    df = pd.concat(dfs, ignore_index=True)
 
     unidade_col = _pick_col(df, ["unidade", "clinica", "filial"])
     
