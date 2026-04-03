@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import FactFinanceiro, FactProducaoProfissional, FactUnidadeMensal
+from .models import FactFinanceiro, FactUnidadeMensal
 
 MARGEM_CRITICA = -0.05
 YOY_QUEDA_CRITICA = -0.20
@@ -152,17 +152,26 @@ def _alertas_yoy_unidade(db: Session) -> list[Alerta]:
 
 
 def _alertas_conversao(db: Session) -> list[Alerta]:
+    periodo_ref = db.execute(
+        select(FactUnidadeMensal.ano, FactUnidadeMensal.mes)
+        .order_by(FactUnidadeMensal.ano.desc(), FactUnidadeMensal.mes.desc())
+        .limit(1)
+    ).first()
+    if not periodo_ref:
+        return []
+
+    ano_ref, mes_ref = periodo_ref
     rows = db.execute(
         select(
-            FactProducaoProfissional.unidade,
-            func.sum(FactProducaoProfissional.cirurgias),
-            func.sum(FactProducaoProfissional.consultas),
+            FactUnidadeMensal.unidade,
+            func.sum(FactUnidadeMensal.cirurgias),
+            func.sum(FactUnidadeMensal.consultas),
         )
         .where(
-            FactProducaoProfissional.ano
-            == select(func.max(FactProducaoProfissional.ano)).scalar_subquery()
+            FactUnidadeMensal.ano == ano_ref,
+            FactUnidadeMensal.mes <= mes_ref,
         )
-        .group_by(FactProducaoProfissional.unidade)
+        .group_by(FactUnidadeMensal.unidade)
     ).all()
 
     baixas: list[tuple[str, float, float, float]] = []
@@ -184,8 +193,12 @@ def _alertas_conversao(db: Session) -> list[Alerta]:
         Alerta(
             nivel="atencao",
             categoria="operacional",
-            titulo=f"{len(baixas)} unidade(s) com conversão abaixo de {int(CONV_THRESHOLD * 100)}%",
+            titulo=(
+                f"{len(baixas)} unidade(s) com conversão abaixo de {int(CONV_THRESHOLD * 100)}% "
+                f"({ano_ref} YTD)"
+            ),
             detalhe=(
+                f"Acumulado até {ano_ref}-{mes_ref:02d}. "
                 f"Pior caso: {pior[0]} com {pior[1] * 100:.1f}% "
                 f"({int(pior[2])} cirurgias / {int(pior[3])} consultas)."
             ),
