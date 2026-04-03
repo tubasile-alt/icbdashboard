@@ -96,10 +96,7 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
     db.execute(delete(FactFinanceiro))
 
     # === FACT_UNIDADE_MENSAL: agregar por (unidade, ano, mes) ===
-    if receita_col:
-        unidade_df = df[df[receita_col] != 0].copy()
-    else:
-        unidade_df = df.copy()
+    unidade_df = df.copy()
 
     if len(unidade_df) > 0:
         unidade_df['ano'] = unidade_df[ano_col].apply(_to_int)
