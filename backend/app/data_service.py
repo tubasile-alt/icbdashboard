@@ -95,60 +95,109 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
     db.execute(delete(FactProducaoProfissional))
     db.execute(delete(FactFinanceiro))
 
-    # Linha com receita entra em fact_unidade_mensal
+    # === FACT_UNIDADE_MENSAL: agregar por (unidade, ano, mes) ===
     if receita_col:
         unidade_df = df[df[receita_col] != 0].copy()
     else:
         unidade_df = df.copy()
 
-    for _, row in unidade_df.iterrows():
-        receita = max(float(row.get(receita_col, 0) or 0), 0)
-        consultas = max(float(row.get(consultas_col, 0) or 0), 0)
-        cirurgias = max(float(row.get(cirurgias_col, 0) or 0), 0)
-        item = FactUnidadeMensal(
-            unidade=str(row.get(unidade_col, "")).strip(),
-            ano=_to_int(row.get(ano_col)),
-            mes=_to_int(row.get(mes_col)),
-            receita=receita,
-            leads=max(float(row.get(leads_col, 0) or 0), 0),
-            consultas=consultas,
-            cirurgias=cirurgias,
-            mes_incompleto=datetime.now(UTC).month == _to_int(row.get(mes_col)),
-            dados_inconsistentes=consultas == 0 and receita > 0,
-        )
-        db.add(item)
+    if len(unidade_df) > 0:
+        unidade_df['ano'] = unidade_df[ano_col].apply(_to_int)
+        unidade_df['mes'] = unidade_df[mes_col].apply(_to_int)
+        unidade_df['unidade_clean'] = unidade_df[unidade_col].astype(str).str.strip()
+        unidade_df['receita'] = pd.to_numeric(unidade_df[receita_col], errors='coerce').fillna(0)
+        unidade_df['leads'] = pd.to_numeric(unidade_df[leads_col], errors='coerce').fillna(0) if leads_col else 0
+        unidade_df['consultas'] = pd.to_numeric(unidade_df[consultas_col], errors='coerce').fillna(0) if consultas_col else 0
+        unidade_df['cirurgias'] = pd.to_numeric(unidade_df[cirurgias_col], errors='coerce').fillna(0) if cirurgias_col else 0
 
-    # Linha com produção entra em fact_producao_profissional
-    if profissional_col:
-        prof_df = df[df[profissional_col].astype(str).str.strip() != "0"].copy()
-        prof_df = prof_df[prof_df[profissional_col].astype(str).str.strip() != ""]
-        for _, row in prof_df.iterrows():
-            consultas = max(float(row.get(consultas_col, 0) or 0), 0)
-            item = FactProducaoProfissional(
-                profissional=str(row.get(profissional_col, "")).strip(),
-                unidade=str(row.get(unidade_col, "")).strip(),
-                ano=_to_int(row.get(ano_col)),
-                mes=_to_int(row.get(mes_col)),
+        # Agregar por chave única
+        agg_dict = {
+            'receita': 'sum',
+            'leads': 'sum',
+            'consultas': 'sum',
+            'cirurgias': 'sum',
+        }
+        grouped = unidade_df.groupby(['unidade_clean', 'ano', 'mes'], as_index=False).agg(agg_dict)
+        
+        for _, row in grouped.iterrows():
+            consultas = max(row['consultas'], 0)
+            receita = max(row['receita'], 0)
+            item = FactUnidadeMensal(
+                unidade=row['unidade_clean'],
+                ano=int(row['ano']),
+                mes=int(row['mes']),
+                receita=receita,
+                leads=max(row['leads'], 0),
                 consultas=consultas,
-                retornos=max(float(row.get(retornos_col, 0) or 0), 0),
-                cirurgias=max(float(row.get(cirurgias_col, 0) or 0), 0),
-                mes_incompleto=datetime.now(UTC).month == _to_int(row.get(mes_col)),
-                dados_inconsistentes=consultas == 0 and float(row.get(cirurgias_col, 0) or 0) > 0,
+                cirurgias=max(row['cirurgias'], 0),
+                mes_incompleto=datetime.now(UTC).month == int(row['mes']),
+                dados_inconsistentes=consultas == 0 and receita > 0,
             )
             db.add(item)
 
-    # Financeiro separado (nunca misturar com base operacional)
-    if competencia_col and receita_liquida_col:
-        fin_df = df[df[receita_liquida_col] != 0].copy()
-        for _, row in fin_df.iterrows():
-            db.add(
-                FactFinanceiro(
-                    competencia=str(row.get(competencia_col, "")).strip(),
-                    receita_liquida=max(float(row.get(receita_liquida_col, 0) or 0), 0),
-                    ebitda=float(row.get(ebitda_col, 0) or 0),
-                    lucro_liquido=float(row.get(lucro_col, 0) or 0),
+    # === FACT_PRODUCAO_PROFISSIONAL: agregar por (profissional, unidade, ano, mes) ===
+    if profissional_col:
+        prof_df = df[df[profissional_col].astype(str).str.strip() != ""].copy()
+        prof_df = prof_df[prof_df[profissional_col].astype(str).str.strip() != "0"].copy()
+        
+        if len(prof_df) > 0:
+            prof_df['profissional_clean'] = prof_df[profissional_col].astype(str).str.strip()
+            prof_df['unidade_clean'] = prof_df[unidade_col].astype(str).str.strip()
+            prof_df['ano'] = prof_df[ano_col].apply(_to_int)
+            prof_df['mes'] = prof_df[mes_col].apply(_to_int)
+            prof_df['consultas'] = pd.to_numeric(prof_df[consultas_col], errors='coerce').fillna(0) if consultas_col else 0
+            prof_df['retornos'] = pd.to_numeric(prof_df[retornos_col], errors='coerce').fillna(0) if retornos_col else 0
+            prof_df['cirurgias'] = pd.to_numeric(prof_df[cirurgias_col], errors='coerce').fillna(0) if cirurgias_col else 0
+
+            # Agregar por chave única
+            agg_dict = {
+                'consultas': 'sum',
+                'retornos': 'sum',
+                'cirurgias': 'sum',
+            }
+            grouped = prof_df.groupby(['profissional_clean', 'unidade_clean', 'ano', 'mes'], as_index=False).agg(agg_dict)
+            
+            for _, row in grouped.iterrows():
+                consultas = max(row['consultas'], 0)
+                item = FactProducaoProfissional(
+                    profissional=row['profissional_clean'],
+                    unidade=row['unidade_clean'],
+                    ano=int(row['ano']),
+                    mes=int(row['mes']),
+                    consultas=consultas,
+                    retornos=max(row['retornos'], 0),
+                    cirurgias=max(row['cirurgias'], 0),
+                    mes_incompleto=datetime.now(UTC).month == int(row['mes']),
+                    dados_inconsistentes=consultas == 0 and row['cirurgias'] > 0,
                 )
-            )
+                db.add(item)
+
+    # === FACT_FINANCEIRO: agregar por competencia ===
+    if competencia_col and receita_liquida_col:
+        fin_df = df[df[receita_liquida_col] != 0].copy() if receita_liquida_col in df.columns else pd.DataFrame()
+        
+        if len(fin_df) > 0:
+            fin_df['competencia_clean'] = fin_df[competencia_col].astype(str).str.strip()
+            fin_df['receita_liquida'] = pd.to_numeric(fin_df[receita_liquida_col], errors='coerce').fillna(0)
+            fin_df['ebitda'] = pd.to_numeric(fin_df[ebitda_col], errors='coerce').fillna(0) if ebitda_col else 0
+            fin_df['lucro_liquido'] = pd.to_numeric(fin_df[lucro_col], errors='coerce').fillna(0) if lucro_col else 0
+
+            # Agregar por competencia
+            grouped = fin_df.groupby('competencia_clean', as_index=False).agg({
+                'receita_liquida': 'sum',
+                'ebitda': 'sum',
+                'lucro_liquido': 'sum',
+            })
+            
+            for _, row in grouped.iterrows():
+                db.add(
+                    FactFinanceiro(
+                        competencia=row['competencia_clean'],
+                        receita_liquida=max(row['receita_liquida'], 0),
+                        ebitda=row['ebitda'],
+                        lucro_liquido=row['lucro_liquido'],
+                    )
+                )
 
     existing_metadata = db.get(Metadata, 1)
     if existing_metadata:

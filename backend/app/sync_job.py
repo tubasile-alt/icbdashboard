@@ -19,16 +19,16 @@ async def run_sync_loop():
             file_info = download_latest_file_from_dropbox()
             metadata = db.get(Metadata, 1)
             
-            has_sufficient_data = False
+            has_operational_data = False
             if metadata and metadata.source_file_rev == file_info["file_rev"]:
-                print(f"[SYNC] Verificando se há dados suficientes no banco...", flush=True)
+                print(f"[SYNC] Verificando se há dados operacionais no banco...", flush=True)
                 from sqlalchemy import func
                 count = db.query(func.count(FactUnidadeMensal.id)).scalar() or 0
-                print(f"[SYNC] Registros encontrados: {count}", flush=True)
-                if count > 500:
-                    has_sufficient_data = True
+                print(f"[SYNC] Registros operacionais encontrados: {count}", flush=True)
+                if count > 0:
+                    has_operational_data = True
             
-            if not has_sufficient_data:
+            if not has_operational_data:
                 print(f"[SYNC] Processando arquivo: {file_info['file_name']}", flush=True)
                 process_excel_and_refresh_database(
                     db,
