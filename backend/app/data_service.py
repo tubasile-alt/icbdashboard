@@ -54,6 +54,79 @@ def _to_int(value) -> int:
         return 0
 
 
+def _extract_financial_from_sheets(all_sheets: dict) -> pd.DataFrame:
+    """Extrai dados financeiros de abas tipo 'Despesas MÊS ANO' e 'Despesas Totais XXXX'."""
+    financial_rows = []
+    
+    for sheet_name, raw_df in all_sheets.items():
+        sheet_lower = sheet_name.lower()
+        
+        # Processa apenas abas de despesa
+        if "despesa" not in sheet_lower:
+            continue
+        
+        # Pular abas vazias
+        if len(raw_df) < 3:
+            continue
+        
+        # Tentar extrair competencia do nome da aba
+        import re
+        match = re.search(r'(\d{4})-?(\d{2})|([A-Z]{3})\s*(\d{4})', sheet_name)
+        competencia = None
+        if match:
+            if match.group(1):  # Formato XXXX-MM
+                competencia = f"{match.group(1)}-{match.group(2)}"
+            else:  # Formato MÊS XXXX
+                month_map = {'JAN': '01', 'FEV': '02', 'MAR': '03', 'ABR': '04', 'MAI': '05',
+                            'JUN': '06', 'JUL': '07', 'AGO': '08', 'SET': '09', 'OUT': '10',
+                            'NOV': '11', 'DEZ': '12'}
+                mes = month_map.get(match.group(3))
+                if mes:
+                    competencia = f"{match.group(4)}-{mes}"
+        
+        # Se não extraiu competencia, usar nome da aba como fallback
+        if not competencia:
+            competencia = sheet_name
+        
+        # Encontrar linha de header (procura por "Unidade" ou "UNIDADE")
+        header_row = None
+        for idx, row in raw_df.iterrows():
+            row_str = str(row).lower()
+            if 'unidade' in row_str or 'faturamento' in row_str or 'ebitda' in row_str:
+                header_row = idx
+                break
+        
+        if header_row is None or header_row >= len(raw_df) - 1:
+            continue
+        
+        # Re-ler a aba com header correto
+        df = raw_df.iloc[header_row:].copy()
+        df.columns = df.iloc[0]
+        df = df.iloc[1:].reset_index(drop=True)
+        df = _normalize_columns(df)
+        
+        # Procurar colunas financeiras
+        receita_liquida_col = _pick_col(df, ["receita_liquida", "receita liquida"], required=False)
+        ebitda_col = _pick_col(df, ["ebitda"], required=False)
+        lucro_col = _pick_col(df, ["lucro_liquido", "ll", "lucro liquido"], required=False)
+        
+        if receita_liquida_col or ebitda_col or lucro_col:
+            for _, row in df.iterrows():
+                receita_liquida = pd.to_numeric(row.get(receita_liquida_col) if receita_liquida_col else 0, errors='coerce') or 0
+                ebitda = pd.to_numeric(row.get(ebitda_col) if ebitda_col else 0, errors='coerce') or 0
+                lucro = pd.to_numeric(row.get(lucro_col) if lucro_col else 0, errors='coerce') or 0
+                
+                if max(receita_liquida, ebitda, lucro) > 0:
+                    financial_rows.append({
+                        'competencia': competencia,
+                        'receita_liquida': receita_liquida,
+                        'ebitda': ebitda,
+                        'lucro_liquido': lucro,
+                    })
+    
+    return pd.DataFrame(financial_rows) if financial_rows else pd.DataFrame()
+
+
 def process_excel_and_refresh_database(db: Session, excel_path: str, source_file_name: str, source_file_rev: str):
     all_sheets = pd.read_excel(excel_path, sheet_name=None)
     dfs = []
@@ -64,7 +137,7 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
         
         # Só processar abas que têm as colunas essenciais
         has_unidade = any(col in df.columns for col in ["unidade", "clinica", "filial"])
-        has_date_or_period = "data" in df.columns or ("ano" in df.columns and ("mes" in df.columns or "mes" in df.columns))
+        has_date_or_period = "data" in df.columns or ("ano" in df.columns and "mes" in df.columns)
         
         if len(df) > 0 and has_unidade and has_date_or_period:
             dfs.append(df)
@@ -183,32 +256,44 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
                 )
                 db.add(item)
 
-    # === FACT_FINANCEIRO: agregar por competencia ===
-    if competencia_col and receita_liquida_col:
-        fin_df = df[df[receita_liquida_col] != 0].copy() if receita_liquida_col in df.columns else pd.DataFrame()
+    # === FACT_FINANCEIRO: de abas operacionais + abas de despesa ===
+    fin_df_operational = pd.DataFrame()
+    
+    # De abas operacionais (se houver competencia + receita_liquida)
+    if competencia_col and receita_liquida_col and receita_liquida_col in df.columns:
+        fin_df_operational = df[df[receita_liquida_col] != 0].copy()
+        if len(fin_df_operational) > 0:
+            fin_df_operational['competencia_clean'] = fin_df_operational[competencia_col].astype(str).str.strip()
+            fin_df_operational['receita_liquida'] = pd.to_numeric(fin_df_operational[receita_liquida_col], errors='coerce').fillna(0)
+            fin_df_operational['ebitda'] = pd.to_numeric(fin_df_operational[ebitda_col], errors='coerce').fillna(0) if ebitda_col else 0
+            fin_df_operational['lucro_liquido'] = pd.to_numeric(fin_df_operational[lucro_col], errors='coerce').fillna(0) if lucro_col else 0
+            fin_df_operational = fin_df_operational[['competencia_clean', 'receita_liquida', 'ebitda', 'lucro_liquido']]
+    
+    # De abas de despesa
+    fin_df_despesas = _extract_financial_from_sheets(all_sheets)
+    
+    # Combinar ambas
+    if len(fin_df_operational) > 0:
+        fin_df_operational.columns = ['competencia', 'receita_liquida', 'ebitda', 'lucro_liquido']
+        fin_df_despesas = pd.concat([fin_df_despesas, fin_df_operational], ignore_index=True)
+    
+    # Agregar por competencia
+    if len(fin_df_despesas) > 0:
+        grouped = fin_df_despesas.groupby('competencia', as_index=False).agg({
+            'receita_liquida': 'sum',
+            'ebitda': 'sum',
+            'lucro_liquido': 'sum',
+        })
         
-        if len(fin_df) > 0:
-            fin_df['competencia_clean'] = fin_df[competencia_col].astype(str).str.strip()
-            fin_df['receita_liquida'] = pd.to_numeric(fin_df[receita_liquida_col], errors='coerce').fillna(0)
-            fin_df['ebitda'] = pd.to_numeric(fin_df[ebitda_col], errors='coerce').fillna(0) if ebitda_col else 0
-            fin_df['lucro_liquido'] = pd.to_numeric(fin_df[lucro_col], errors='coerce').fillna(0) if lucro_col else 0
-
-            # Agregar por competencia
-            grouped = fin_df.groupby('competencia_clean', as_index=False).agg({
-                'receita_liquida': 'sum',
-                'ebitda': 'sum',
-                'lucro_liquido': 'sum',
-            })
-            
-            for _, row in grouped.iterrows():
-                db.add(
-                    FactFinanceiro(
-                        competencia=row['competencia_clean'],
-                        receita_liquida=max(row['receita_liquida'], 0),
-                        ebitda=row['ebitda'],
-                        lucro_liquido=row['lucro_liquido'],
-                    )
+        for _, row in grouped.iterrows():
+            db.add(
+                FactFinanceiro(
+                    competencia=row['competencia'],
+                    receita_liquida=max(row['receita_liquida'], 0),
+                    ebitda=row['ebitda'],
+                    lucro_liquido=row['lucro_liquido'],
                 )
+            )
 
     existing_metadata = db.get(Metadata, 1)
     if existing_metadata:
