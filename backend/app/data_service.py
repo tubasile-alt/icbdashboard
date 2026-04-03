@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import re
+import unicodedata
 
 import pandas as pd
 from sqlalchemy import delete, func, select
@@ -11,26 +13,33 @@ from .models import FactFinanceiro, FactProducaoProfissional, FactUnidadeMensal,
 
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    def _normalize_col_name(col_name: str) -> str:
+        normalized = unicodedata.normalize("NFKD", str(col_name)).encode("ascii", "ignore").decode("ascii")
+        normalized = normalized.strip().lower().replace("-", "_")
+        normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
+        normalized = re.sub(r"_+", "_", normalized).strip("_")
+        return normalized
+
     df = df.copy()
-    df.columns = [
-        str(col)
-        .strip()
-        .lower()
-        .replace(" ", "_")
-        .replace("-", "_")
-        .replace("ç", "c")
-        .replace("ã", "a")
-        .replace("á", "a")
-        .replace("ê", "e")
-        for col in df.columns
-    ]
+    df.columns = [_normalize_col_name(col) for col in df.columns]
     return df
 
 
-def _pick_col(df: pd.DataFrame, options: list[str], required: bool = True) -> str | None:
+def _pick_col(
+    df: pd.DataFrame,
+    options: list[str],
+    required: bool = True,
+    contains_any: list[str] | None = None,
+) -> str | None:
     for col in options:
         if col in df.columns:
             return col
+
+    if contains_any:
+        for existing_col in df.columns:
+            if any(keyword in existing_col for keyword in contains_any):
+                return existing_col
+
     if required:
         raise ValueError(f"Coluna obrigatória ausente. Opções aceitas: {options}")
     return None
@@ -80,7 +89,12 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
     receita_col = _pick_col(df, ["valor_dos_servicos", "receita", "receita_base", "faturamento"], required=False)
     leads_col = _pick_col(df, ["leads"], required=False)
     consultas_col = _pick_col(df, ["consultas", "consultas_online"], required=False)
-    cirurgias_col = _pick_col(df, ["cirurgias", "cirurgias_realizadas_no_cc"], required=False)
+    cirurgias_col = _pick_col(
+        df,
+        ["cirurgias", "cirurgias_realizadas_no_cc"],
+        required=False,
+        contains_any=["cirurg", "procedimento"],
+    )
 
     profissional_col = _pick_col(df, ["profissional", "medico"], required=False)
     retornos_col = _pick_col(df, ["retornos", "retornos_online"], required=False)
