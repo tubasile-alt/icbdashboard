@@ -116,7 +116,7 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
         unidade_df['ano'] = unidade_df[ano_col].apply(_to_int)
         unidade_df['mes'] = unidade_df[mes_col].apply(_to_int)
         unidade_df['unidade_clean'] = unidade_df[unidade_col].astype(str).str.strip()
-        unidade_df['receita'] = pd.to_numeric(unidade_df[receita_col], errors='coerce').fillna(0)
+        unidade_df['receita'] = pd.to_numeric(unidade_df[receita_col], errors='coerce').fillna(0) if receita_col else 0
         unidade_df['leads'] = pd.to_numeric(unidade_df[leads_col], errors='coerce').fillna(0) if leads_col else 0
         unidade_df['consultas'] = pd.to_numeric(unidade_df[consultas_col], errors='coerce').fillna(0) if consultas_col else 0
         unidade_df['cirurgias'] = pd.to_numeric(unidade_df[cirurgias_col], errors='coerce').fillna(0) if cirurgias_col else 0
