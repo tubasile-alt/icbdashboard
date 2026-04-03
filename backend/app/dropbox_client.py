@@ -19,6 +19,16 @@ def download_latest_file_from_dropbox(download_dir: str = "./tmp") -> dict:
     }
     payload = {"path": settings.dropbox_folder_path, "recursive": False, "include_deleted": False}
     response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+    
+    if response.status_code != 200:
+        error_msg = response.text
+        try:
+            error_json = response.json()
+            error_msg = error_json.get("error_summary", error_msg)
+        except:
+            pass
+        raise RuntimeError(f"Dropbox API Error ({response.status_code}): {error_msg}")
+    
     response.raise_for_status()
 
     entries = response.json().get("entries", [])
