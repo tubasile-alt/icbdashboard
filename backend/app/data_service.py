@@ -6,6 +6,7 @@ import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from .alerts_service import build_alerts
 from .models import FactFinanceiro, FactProducaoProfissional, FactUnidadeMensal, Metadata
 
 
@@ -241,6 +242,8 @@ def get_dashboard_payload(db: Session, stale_threshold_hours: int) -> dict:
             }
         )
 
+    alerts = build_alerts(db)
+
     return {
         "last_update": last["last_update"],
         "status": last["status"],
@@ -256,4 +259,5 @@ def get_dashboard_payload(db: Session, stale_threshold_hours: int) -> dict:
         "cirurgias_por_mes": cirurgias_por_mes,
         "receita_por_unidade": receita_por_unidade,
         "unidades": unidades,
+        "alertas": alerts,
     }

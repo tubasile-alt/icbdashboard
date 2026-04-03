@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .data_service import get_dashboard_payload, get_last_update_status
 from .database import Base, engine, get_db
-from .schemas import LastUpdateResponse
+from .schemas import DashboardResponse, LastUpdateResponse
 from .sync_job import run_sync_loop
 
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,6 @@ def last_update(db: Session = Depends(get_db)):
     return get_last_update_status(db, settings.stale_threshold_hours)
 
 
-@app.get("/dashboard")
+@app.get("/dashboard", response_model=DashboardResponse)
 def dashboard(db: Session = Depends(get_db)):
     return get_dashboard_payload(db, settings.stale_threshold_hours)
