@@ -50,17 +50,26 @@ def process_excel_and_refresh_database(db: Session, excel_path: str, source_file
     df = _normalize_columns(raw_df).fillna(0)
 
     unidade_col = _pick_col(df, ["unidade", "clinica", "filial"])
-    ano_col = _pick_col(df, ["ano"])
-    mes_col = _pick_col(df, ["mes", "mês"])
-    receita_col = _pick_col(df, ["receita", "receita_base", "faturamento"], required=False)
+    
+    data_col = _pick_col(df, ["data"], required=False)
+    if data_col:
+        df['ano'] = pd.to_datetime(df[data_col], errors='coerce').dt.year
+        df['mes'] = pd.to_datetime(df[data_col], errors='coerce').dt.month
+        ano_col = 'ano'
+        mes_col = 'mes'
+    else:
+        ano_col = _pick_col(df, ["ano"])
+        mes_col = _pick_col(df, ["mes", "mes"])
+    
+    receita_col = _pick_col(df, ["valor_dos_servicos", "receita", "receita_base", "faturamento"], required=False)
     leads_col = _pick_col(df, ["leads"], required=False)
-    consultas_col = _pick_col(df, ["consultas"], required=False)
-    cirurgias_col = _pick_col(df, ["cirurgias"], required=False)
+    consultas_col = _pick_col(df, ["consultas", "consultas_online"], required=False)
+    cirurgias_col = _pick_col(df, ["cirurgias", "cirurgias_realizadas_no_cc"], required=False)
 
     profissional_col = _pick_col(df, ["profissional", "medico"], required=False)
-    retornos_col = _pick_col(df, ["retornos"], required=False)
+    retornos_col = _pick_col(df, ["retornos", "retornos_online"], required=False)
 
-    competencia_col = _pick_col(df, ["competencia", "competência"], required=False)
+    competencia_col = _pick_col(df, ["competencia", "competencia"], required=False)
     receita_liquida_col = _pick_col(df, ["receita_liquida", "dre_receita_liquida"], required=False)
     ebitda_col = _pick_col(df, ["ebitda", "dre_ebitda"], required=False)
     lucro_col = _pick_col(df, ["lucro_liquido", "dre_lucro_liquido"], required=False)
