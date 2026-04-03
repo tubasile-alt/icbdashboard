@@ -17,7 +17,8 @@ def download_latest_file_from_dropbox(download_dir: str = "./tmp") -> dict:
         "Authorization": f"Bearer {settings.dropbox_access_token}",
         "Content-Type": "application/json",
     }
-    payload = {"path": settings.dropbox_folder_path, "recursive": False, "include_deleted": False}
+    is_recursive = not settings.dropbox_folder_path
+    payload = {"path": settings.dropbox_folder_path, "recursive": is_recursive, "include_deleted": False}
     response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
     
     if response.status_code != 200:
