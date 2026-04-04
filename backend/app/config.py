@@ -5,7 +5,9 @@ class Settings(BaseSettings):
     app_name: str = "ICB Performance Dashboard API"
     database_url: str = "sqlite:///./icb_dashboard.db"
 
-    dropbox_access_token: str = ""
+    dropbox_app_key: str = ""
+    dropbox_app_secret: str = ""
+    dropbox_refresh_token: str = ""
     dropbox_folder_path: str = "/"
     dropbox_file_extension: str = ".xlsx"
 

@@ -1,46 +1,54 @@
 const config = {
-  updated: {
+  atualizado: {
     dot: 'bg-emerald-400',
-    text: 'text-emerald-300',
-    label: '🟢 Atualizado recentemente',
+    text: 'text-emerald-200',
+    ring: 'ring-emerald-400/40',
+    chip: 'bg-emerald-500/20 text-emerald-200',
+    label: 'Atualizado',
   },
-  attention: {
+  atencao: {
     dot: 'bg-amber-400',
-    text: 'text-amber-300',
-    label: '🟡 Atenção na atualização',
+    text: 'text-amber-100',
+    ring: 'ring-amber-400/40',
+    chip: 'bg-amber-500/20 text-amber-200',
+    label: 'Atenção',
   },
-  stale: {
+  desatualizado: {
     dot: 'bg-rose-400',
-    text: 'text-rose-300',
-    label: '🔴 Dados desatualizados',
+    text: 'text-rose-100',
+    ring: 'ring-rose-400/40',
+    chip: 'bg-rose-500/20 text-rose-200',
+    label: 'Desatualizado',
   },
 };
 
 function getRelativeText(lastUpdate) {
-  if (!lastUpdate) return 'sem atualização';
+  if (!lastUpdate) return 'Sem atualização registrada';
   const diffMs = Date.now() - new Date(lastUpdate).getTime();
   const minutes = Math.max(Math.floor(diffMs / 60000), 0);
   if (minutes < 60) return `Atualizado há ${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  return `Atualizado há ${hours}h`;
+  return `Atualizado há ${hours} h`;
 }
 
 export default function UpdateBadge({ status, lastUpdate }) {
-  const minutesSince = lastUpdate ? (Date.now() - new Date(lastUpdate).getTime()) / 60000 : 9999;
-  const effectiveStatus = status === 'updated' && minutesSince > 60 ? 'attention' : status;
-  const item = config[effectiveStatus] || config.stale;
+  const item = config[status] || config.desatualizado;
 
   return (
-    <div className="glass rounded-xl p-4">
-      <div className={`flex items-center gap-2 font-semibold ${item.text}`}>
+    <div className={`highlight-card glass rounded-2xl p-5 ring-1 ${item.ring}`}>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Status da Base</p>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${item.chip}`}>{item.label}</span>
+      </div>
+
+      <div className={`flex items-center gap-2 text-lg font-semibold ${item.text}`}>
         <span className={`h-2.5 w-2.5 rounded-full ${item.dot} pulse-soft`} />
-        <span>{item.label}</span>
+        {getRelativeText(lastUpdate)}
       </div>
-      <div className="mt-2 text-sm text-slate-200">{getRelativeText(lastUpdate)}</div>
-      <div className="text-xs text-slate-400">
-        Última atualização:{' '}
-        {lastUpdate ? new Date(lastUpdate).toLocaleString('pt-BR') : 'N/D'}
-      </div>
+
+      <p className="mt-3 text-xs text-slate-400">
+        Última atualização: {lastUpdate ? new Date(lastUpdate).toLocaleString('pt-BR') : 'N/D'}
+      </p>
     </div>
   );
 }

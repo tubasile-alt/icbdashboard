@@ -1,0 +1,63 @@
+Quero corrigir minha integração com o Dropbox para NÃO depender de access token manual que expira em poucas horas.
+
+Objetivo:
+- parar de usar um generated access token temporário
+- implementar autenticação OAuth 2.0 do Dropbox com refresh token
+- renovar access tokens automaticamente
+- manter a conexão estável sem eu precisar gerar token novo manualmente
+
+Tarefas que você deve executar no projeto:
+1. Identificar onde atualmente o sistema usa um access token fixo/manual do Dropbox.
+2. Refatorar a integração para usar estas variáveis de ambiente:
+   - DROPBOX_APP_KEY
+   - DROPBOX_APP_SECRET
+   - DROPBOX_REFRESH_TOKEN
+3. Implementar uma função que obtenha automaticamente um novo access token a partir do refresh token no endpoint oficial do Dropbox OAuth.
+4. Garantir que toda chamada para a API do Dropbox use sempre um access token válido recém-gerado ou ainda válido.
+5. Se houver cache do token em memória, usar com controle de expiração para evitar requisições desnecessárias.
+6. Centralizar a lógica em um serviço único, por exemplo:
+   - services/dropbox_service.py
+   ou equivalente, se o projeto for em Node:
+   - services/dropboxService.js
+7. Criar tratamento de erro claro para:
+   - refresh token inválido
+   - app key/app secret ausentes
+   - falha ao renovar token
+   - permissões/scopes insuficientes
+8. Remover dependência de token manual hardcoded no código.
+9. Procurar todos os pontos do projeto que usam Dropbox e migrar para a nova função centralizada.
+10. Me mostrar exatamente:
+   - quais arquivos foram alterados
+   - quais variáveis de ambiente preciso cadastrar
+   - qual Redirect URI devo configurar no Dropbox Developer Console
+   - como obter o refresh token corretamente
+
+Requisitos técnicos:
+- não quebrar as funções atuais que acessam arquivos do Dropbox
+- manter o código limpo e modular
+- adicionar comentários objetivos
+- preservar compatibilidade com o restante do app
+- se já existir integração parcial, adaptar em vez de duplicar
+
+Se o projeto estiver em Python:
+- use requests
+- crie uma função como get_dropbox_access_token()
+
+Se o projeto estiver em Node.js:
+- use fetch ou axios
+- crie uma função como getDropboxAccessToken()
+
+Também quero:
+- um pequeno endpoint ou script de teste para validar a conexão com Dropbox
+- esse teste deve chamar algo simples como listar pasta raiz ou obter dados da conta
+- exibir mensagens claras de sucesso ou erro
+
+Ao final:
+- faça uma varredura no repositório para encontrar qualquer uso antigo de access token fixo
+- substitua tudo pelo novo fluxo
+- me entregue um resumo final com:
+  1. problema encontrado
+  2. solução implementada
+  3. arquivos alterados
+  4. variáveis necessárias
+  5. próximos passos no Dropbox Developer Console
