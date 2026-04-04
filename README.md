@@ -1,65 +1,88 @@
-# ICB Performance Dashboard
+# ICB Dashboard Evoluído
 
-Dashboard SaaS premium (dark mode) com backend FastAPI + frontend React/Tailwind, ingestão automática de planilha Excel no Dropbox e atualização incremental por verificação de versão do arquivo.
+## Status de implementação por etapas
 
-## Arquitetura
+- ✅ **Etapa 1 concluída**: estrutura de pastas modular.
+- ✅ **Etapa 2 concluída**: schema do banco completo para as tabelas fact + metadata + quality report.
+- ✅ **Etapa 3 concluída**: limpeza robusta + testes de consistência automatizados.
 
-- `backend/`: API, job de sincronização, processamento de Excel, camada de dados (SQLite com URL configurável para Postgres).
-- `frontend/`: dashboard executivo em React + Recharts + Tailwind (estilo glass/dark).
+## 1) Estrutura de pastas (concluída)
 
-## Funcionalidades implementadas
+```text
+backend/
+  app/
+    api/
+      dashboard_service.py      # consultas agregadas e respostas dos endpoints
+    etl/
+      excel_pipeline.py         # ingestão + limpeza + normalização full refresh
+    config.py
+    database.py
+    dropbox_client.py
+    main.py                     # rotas FastAPI
+    models.py                   # schema SQLAlchemy
+    sync_job.py                 # scheduler de atualização automática
+frontend/
+  src/
+    App.jsx
+    components/
+    lib/api.js
+```
 
-- Download automático do arquivo mais recente do Dropbox via `download_latest_file_from_dropbox()`.
-- Processamento da planilha com `pandas` e limpeza obrigatória:
-  - remove colunas totalmente vazias;
-  - separa linhas para tabelas operacionais e de produção;
-  - nulos numéricos viram `0`;
-  - ignora profissional vazio;
-  - força receita/cirurgias não negativas.
-- Estratégia de atualização completa (truncate lógico): apaga tabelas e reprocessa tudo (sem append).
-- Flags de qualidade de dados:
-  - `mes_incompleto`;
-  - `dados_inconsistentes`.
-- Endpoint `GET /last-update` com status `updated|stale` (stale após 6h por padrão).
-- Endpoint `GET /dashboard` para cards, gráficos e tabela.
-- Job automático a cada 5 minutos para detectar mudança do arquivo (rev do Dropbox).
-- Frontend com:
-  - Header global “ICB Performance Dashboard”;
-  - Badge visual de atualização (verde/amarelo/vermelho + pulse);
-  - cards executivos;
-  - gráficos (receita mês, cirurgias mês, receita por unidade);
-  - tabela de unidades;
-  - regra de negócio respeitada (não exibe receita por profissional).
+## 2) Schema do banco (concluída)
+- `fact_unidade_mensal` (chave: unidade+ano+mes).
+- `fact_producao_profissional_mensal` (chave: profissional+unidade+ano+mes).
+- `fact_financeiro_mensal` (granularidade por competência, opcional unidade).
+- `fact_fiscal_mensal` (granularidade por competência, opcional unidade).
+- `metadata` (status e timestamps da atualização).
+- `ingestion_quality_report` (métricas de qualidade da carga).
 
-## Modelagem de dados (chaves únicas)
+### Chaves e unicidade
+- `fact_unidade_mensal`: unique `(unidade, ano, mes)`.
+- `fact_producao_profissional_mensal`: unique `(profissional, unidade, ano, mes)`.
+- `fact_financeiro_mensal`: unique `(unidade_ref, competencia)` para cobrir cenário consolidado e por unidade.
+- `fact_fiscal_mensal`: unique `(unidade_ref, competencia)` para cobrir cenário consolidado e por unidade.
 
-- `fact_unidade_mensal`: chave única `(unidade, ano, mes)`.
-- `fact_producao_profissional`: chave única `(profissional, unidade, ano, mes)`.
-- `fact_financeiro`: chave única `(competencia)`.
+## 3) Módulo ETL da planilha
+Arquivo: `backend/app/etl/excel_pipeline.py`
 
-## Variáveis de ambiente
+Fluxo:
+1. Baixa e lê Excel do Dropbox (via `sync_job.py` + `dropbox_client.py`).
+2. Usa apenas abas oficiais:
+   - `Base Dados` (operacional)
+   - `Despesas 2026` (financeiro)
+   - `% Notas fiscais` (fiscal)
+3. Remove colunas 100% vazias e normaliza nomes para `snake_case`.
+4. Deriva `ano`, `mes`, `competencia`, `trimestre`.
+5. Agrega por chave mensal obrigatória.
+6. Recalcula KPIs operacionais sem misturar DRE.
+7. Marca `mes_incompleto` e `dados_inconsistentes`.
+8. Faz `full refresh` (delete + insert) em todas as facts.
+9. Registra `metadata` + `ingestion_quality_report`.
 
-### Backend (`backend/.env`)
+### Testes de consistência (Etapa 3)
+- Arquivo: `backend/tests/test_etl_consistency.py`
+- Casos cobertos:
+  - limpeza de quebras/whitespace em campos texto;
+  - normalização e mapeamento de aliases de colunas;
+  - detecção de `mes_incompleto` e `dados_inconsistentes`;
+  - registro de qualidade (`processed_rows`, `empty_columns_removed`).
 
-Use `backend/.env.example` como base:
+## 4) Endpoints backend
+- `GET /health`
+- `GET /last-update`
+- `GET /dashboard/summary`
+- `GET /dashboard/unidades`
+- `GET /dashboard/profissionais`
+- `GET /dashboard/financeiro`
+- `GET /dashboard/fiscal`
 
-- `DATABASE_URL` (ex.: `sqlite:///./icb_dashboard.db` ou URL Postgres futuramente)
-- `DROPBOX_ACCESS_TOKEN`
-- `DROPBOX_FOLDER_PATH`
-- `DROPBOX_FILE_EXTENSION` (default `.xlsx`)
-- `UPDATE_INTERVAL_MINUTES` (default `5`)
-- `STALE_THRESHOLD_HOURS` (default `6`)
+Filtros globais: `anos`, `meses`, `competencias`, `unidades` (e `profissionais` quando aplicável).
 
-### Frontend (`frontend/.env`)
+## 5) Frontend (após backend)
+Frontend permanece consumindo os endpoints acima via `frontend/src/lib/api.js` e exibindo módulos operacional/financeiro/fiscal em cards, gráficos e tabelas.
 
-Use `frontend/.env.example`:
-
-- `VITE_API_URL` (default `http://localhost:8000`)
-
-## Como executar
-
+## Execução local
 ### Backend
-
 ```bash
 cd backend
 python -m venv .venv
@@ -70,27 +93,9 @@ uvicorn app.main:app --reload
 ```
 
 ### Frontend
-
 ```bash
 cd frontend
 npm install
 cp .env.example .env
 npm run dev
 ```
-
-## Endpoints
-
-- `GET /health`
-- `GET /last-update`
-  ```json
-  {
-    "last_update": "2026-04-02 10:32:00",
-    "status": "updated"
-  }
-  ```
-- `GET /dashboard`
-
-## Observações
-
-- Receita operacional do dashboard vem de `fact_unidade_mensal`.
-- Receita do financeiro (DRE) é mantida separada em `fact_financeiro` e não é misturada nos gráficos operacionais.

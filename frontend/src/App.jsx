@@ -1,221 +1,138 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, Funnel, FunnelChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import KpiCard from './components/KpiCard';
 import UpdateBadge from './components/UpdateBadge';
-import { getDashboard } from './lib/api';
+import { getDashboardBundle } from './lib/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-const NIVEL_CONFIG = {
-  critico: {
-    border: 'border-red-500/80',
-    bg: 'bg-red-500/10',
-    dot: 'bg-red-500',
-    badge: 'bg-red-500/20 text-red-300',
-    label: 'CRÍTICO',
-  },
-  atencao: {
-    border: 'border-amber-500/80',
-    bg: 'bg-amber-500/10',
-    dot: 'bg-amber-500',
-    badge: 'bg-amber-500/20 text-amber-300',
-    label: 'ATENÇÃO',
-  },
-  info: {
-    border: 'border-indigo-500/80',
-    bg: 'bg-indigo-500/10',
-    dot: 'bg-indigo-500',
-    badge: 'bg-indigo-500/20 text-indigo-300',
-    label: 'INFO',
-  },
-};
-const CATEGORIA_LABEL = { financeiro: 'Financeiro', operacional: 'Operacional', fiscal: 'Fiscal' };
+const pct = (v) => `${((v || 0) * 100).toFixed(1)}%`;
+
+const SectionTitle = ({ title, subtitle }) => (
+  <div className="mb-3 flex items-end justify-between">
+    <div>
+      <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+      {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
+    </div>
+  </div>
+);
 
 export default function App() {
-  const [data, setData] = useState(null);
-  const [mostrarTodosAlertas, setMostrarTodosAlertas] = useState(false);
-  const [alertasExpandidos, setAlertasExpandidos] = useState({});
+  const [payload, setPayload] = useState(null);
+  const [filters, setFilters] = useState({ anos: [], meses: [], unidades: [], profissionais: [] });
+
+  const fetchData = async () => {
+    const data = await getDashboardBundle(filters);
+    setPayload(data);
+  };
 
   useEffect(() => {
-    const fetch = async () => {
-      const payload = await getDashboard();
-      setData(payload);
-    };
-    fetch();
-    const id = setInterval(fetch, 60_000);
+    fetchData();
+    const id = setInterval(fetchData, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [JSON.stringify(filters)]);
 
-  const kpis = useMemo(() => {
-    if (!data) return [];
-    const s = data.summary;
-    return [
-      { title: 'Receita total (base operacional)', value: money.format(s.receita_total || 0) },
-      { title: 'EBITDA (financeiro)', value: money.format(s.ebitda || 0) },
-      { title: 'Lucro líquido (financeiro)', value: money.format(s.lucro_liquido || 0) },
-      { title: 'Cirurgias', value: (s.cirurgias || 0).toLocaleString('pt-BR') },
-      { title: 'Ticket médio', value: money.format(s.ticket_medio || 0) },
-    ];
-  }, [data]);
+  const options = useMemo(() => {
+    const anos = new Set();
+    const meses = new Set();
+    (payload?.financeiro?.serie || []).forEach((x) => {
+      const [a, m] = x.competencia.split('-');
+      anos.add(Number(a));
+      meses.add(Number(m));
+    });
+    return {
+      anos: [...anos].sort(),
+      meses: [...meses].sort((a, b) => a - b),
+      unidades: [...new Set((payload?.unidades || []).map((u) => u.unidade))],
+      profissionais: [...new Set((payload?.profissionais || []).map((p) => p.profissional))],
+    };
+  }, [payload]);
 
-  const alertas = data?.alertas || [];
-  const criticos = alertas.filter((a) => a.nivel === 'critico').length;
-  const atencoes = alertas.filter((a) => a.nivel === 'atencao').length;
-  const alertasVisiveis = mostrarTodosAlertas ? alertas : alertas.slice(0, 4);
+  if (!payload) return <div className="min-h-screen bg-slateDeep p-6 text-slate-100">Carregando dashboard premium...</div>;
 
-  if (!data) {
-    return <div className="min-h-screen bg-slateDeep p-6 text-slate-100">Carregando dashboard...</div>;
-  }
+  const s = payload.summary;
+  const funnelData = [
+    { value: s.funil.leads, name: 'Leads' },
+    { value: s.funil.consultas, name: 'Consultas' },
+    { value: s.funil.cirurgias, name: 'Cirurgias' },
+  ];
+
+  const rankingReceita = [...payload.unidades].sort((a, b) => b.receita_operacional - a.receita_operacional)[0];
+  const rankingTicket = [...payload.unidades].sort((a, b) => b.ticket_medio_cirurgia - a.ticket_medio_cirurgia)[0];
+  const rankingConv = [...payload.unidades].sort((a, b) => b.conv_consulta_cirurgia - a.conv_consulta_cirurgia)[0];
+  const rankingCir = [...payload.unidades].sort((a, b) => b.cirurgias - a.cirurgias)[0];
 
   return (
     <div className="min-h-screen bg-slateDeep px-6 py-8 text-slate-100">
-      <header className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-3xl font-semibold">ICB Performance Dashboard</h1>
-          <p className="text-sm text-slate-400">Visão executiva operacional e financeira</p>
+      <header className="mb-6 grid gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
+        <div className="glass rounded-2xl p-6">
+          <h1 className="text-3xl font-semibold">ICB Executive Dashboard</h1>
+          <p className="mt-2 text-sm text-slate-400">Visão premium com separação operacional, financeira e fiscal.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {['anos', 'meses', 'unidades', 'profissionais'].map((k) => (
+              <select
+                key={k}
+                className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3 text-sm outline-none transition focus:border-cyan-400"
+                onChange={(e) => setFilters((f) => ({ ...f, [k]: e.target.value ? [e.target.value] : [] }))}
+              >
+                <option value="">Todos {k}</option>
+                {options[k].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ))}
+          </div>
         </div>
-        <UpdateBadge status={data.status} lastUpdate={data.last_update} />
+
+        <UpdateBadge status={payload.lastUpdate.status} lastUpdate={payload.lastUpdate.last_update} />
       </header>
 
-      <section className="grid gap-4 md:grid-cols-5">
-        {kpis.map((kpi) => (
-          <KpiCard key={kpi.title} title={kpi.title} value={kpi.value} />
-        ))}
+      <section>
+        <SectionTitle title="Funil Operacional" subtitle="Leads → Consultas → Cirurgias e conversões" />
+        <div className="grid gap-4 md:grid-cols-5">
+          <KpiCard title="Leads" value={s.funil.leads.toLocaleString('pt-BR')} tooltip="Total de leads." />
+          <KpiCard title="Consultas" value={s.funil.consultas.toLocaleString('pt-BR')} tooltip="Consultas totais = presenciais + online." />
+          <KpiCard title="Cirurgias" value={s.funil.cirurgias.toLocaleString('pt-BR')} tooltip="Total de cirurgias." />
+          <KpiCard title="Conv. Lead → Consulta" value={pct(s.funil.conv_lead_consulta)} tooltip="consultas_totais / leads" />
+          <KpiCard title="Conv. Consulta → Cirurgia" value={pct(s.funil.conv_consulta_cirurgia)} tooltip="cirurgias / consultas_totais" />
+        </div>
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-xl border border-slate-700/70 glass">
-        <div className="flex items-center justify-between border-b border-slate-700/70 bg-slate-950/30 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold">Alertas Executivos</h3>
-            <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-300">{criticos} críticos</span>
-            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-300">{atencoes} atenções</span>
-          </div>
-          <span className="text-xs text-slate-400">{alertas.length} alertas no total</span>
+      <section className="mt-6">
+        <SectionTitle title="Eficiência e Ranking" subtitle="Indicadores de produtividade e comparação entre unidades" />
+        <div className="grid gap-4 md:grid-cols-4">
+          <KpiCard title="Receita por Lead" value={money.format(s.eficiencia.receita_por_lead)} />
+          <KpiCard title="Receita por Consulta" value={money.format(s.eficiencia.receita_por_consulta)} />
+          <KpiCard title="Cirurgias por Consulta" value={pct(s.eficiencia.cirurgias_por_consulta)} />
+          <KpiCard title="Ticket Médio Cirurgia" value={money.format(s.eficiencia.ticket_medio_cirurgia)} />
+          <KpiCard title="Top Receita" value={rankingReceita ? rankingReceita.unidade : '-'} />
+          <KpiCard title="Top Ticket" value={rankingTicket ? rankingTicket.unidade : '-'} />
+          <KpiCard title="Top Conversão" value={rankingConv ? rankingConv.unidade : '-'} />
+          <KpiCard title="Top Cirurgias" value={rankingCir ? rankingCir.unidade : '-'} />
         </div>
+      </section>
 
-        <div className="divide-y divide-slate-800/80">
-          {alertasVisiveis.map((alerta, idx) => {
-            const key = `${idx}-${alerta.titulo}`;
-            const isOpen = !!alertasExpandidos[key];
-            const cfg = NIVEL_CONFIG[alerta.nivel] || NIVEL_CONFIG.info;
-            return (
-              <div key={key} className={`border-l-4 ${cfg.border} ${cfg.bg}`}>
-                <button
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                  onClick={() => setAlertasExpandidos((prev) => ({ ...prev, [key]: !prev[key] }))}
-                >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
-                  <span className={`rounded px-2 py-0.5 text-[10px] font-bold tracking-wide ${cfg.badge}`}>{cfg.label}</span>
-                  <span className="text-xs text-slate-400">{CATEGORIA_LABEL[alerta.categoria] || alerta.categoria}</span>
-                  <span className="flex-1 text-sm text-slate-100">{alerta.titulo}</span>
-                  <span className={`text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
-                </button>
-                {isOpen && (
-                  <div className="px-10 pb-3">
-                    <p className="text-sm text-slate-300">{alerta.detalhe}</p>
-                    {!!alerta.unidades?.length && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {alerta.unidades.map((u) => (
-                          <span key={u} className="rounded border border-slate-700 bg-slate-800/70 px-2 py-0.5 text-xs text-slate-300">
-                            {u}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      <section className="mt-6">
+        <SectionTitle title="Financeiro e Fiscal" subtitle="Sem mistura com receita operacional" />
+        <div className="grid gap-4 md:grid-cols-4">
+          <KpiCard title="Receita Bruta" value={money.format(s.financeiro.receita_bruta)} />
+          <KpiCard title="Receita Líquida" value={money.format(s.financeiro.receita_liquida)} />
+          <KpiCard title="EBITDA" value={money.format(s.financeiro.ebitda)} />
+          <KpiCard title="Margem EBITDA" value={pct(s.financeiro.margem_ebitda)} />
+          <KpiCard title="Lucro Líquido" value={money.format(s.financeiro.lucro_liquido)} />
+          <KpiCard title="Margem Líquida" value={pct(s.financeiro.margem_liquida)} />
+          <KpiCard title="% Notas Fiscais" value={pct(s.fiscal.percentual_nf)} />
         </div>
-
-        {alertas.length > 4 && (
-          <button
-            className="w-full border-t border-slate-700/70 px-4 py-2 text-xs text-slate-400 hover:bg-slate-900/40"
-            onClick={() => setMostrarTodosAlertas((v) => !v)}
-          >
-            {mostrarTodosAlertas ? '▲ Mostrar menos' : `▼ Ver mais ${alertas.length - 4} alertas`}
-          </button>
-        )}
       </section>
 
       <section className="mt-6 grid gap-4 lg:grid-cols-3">
-        <div className="glass rounded-xl p-4 lg:col-span-1">
-          <h3 className="mb-3 text-sm font-semibold">Receita por mês (base operacional)</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={data.receita_por_mes}>
-              <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis dataKey="competencia" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip />
-              <Line dataKey="receita" stroke="#22d3ee" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="glass rounded-xl p-4 lg:col-span-1">
-          <h3 className="mb-3 text-sm font-semibold">Cirurgias por mês</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={data.cirurgias_por_mes}>
-              <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis dataKey="competencia" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip />
-              <Line dataKey="cirurgias" stroke="#a78bfa" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="glass rounded-xl p-4 lg:col-span-1">
-          <h3 className="mb-3 text-sm font-semibold">Receita por unidade (base operacional)</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={data.receita_por_unidade}>
-              <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis dataKey="unidade" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip />
-              <Bar dataKey="receita" fill="#14b8a6" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <div className="glass rounded-2xl p-4"><h3 className="mb-2 text-sm text-slate-300">Receita por unidade</h3><ResponsiveContainer width="100%" height={220}><BarChart data={payload.unidades}><CartesianGrid stroke="#334155" /><XAxis dataKey="unidade" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Bar dataKey="receita_operacional" fill="#14b8a6" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
+        <div className="glass rounded-2xl p-4"><h3 className="mb-2 text-sm text-slate-300">Ticket médio por unidade</h3><ResponsiveContainer width="100%" height={220}><BarChart data={payload.unidades}><CartesianGrid stroke="#334155" /><XAxis dataKey="unidade" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Bar dataKey="ticket_medio_cirurgia" fill="#6366f1" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
+        <div className="glass rounded-2xl p-4"><h3 className="mb-2 text-sm text-slate-300">Conversão consulta→cirurgia</h3><ResponsiveContainer width="100%" height={220}><BarChart data={payload.unidades}><CartesianGrid stroke="#334155" /><XAxis dataKey="unidade" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Bar dataKey="conv_consulta_cirurgia" fill="#f59e0b" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
       </section>
 
-      <section className="mt-6 glass rounded-xl p-4">
-        <h3 className="mb-4 text-sm font-semibold">Tabela de unidades</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-slate-400">
-              <tr>
-                <th className="pb-2">Unidade</th>
-                <th className="pb-2">Receita</th>
-                <th className="pb-2">Cirurgias</th>
-                <th className="pb-2">Ticket médio</th>
-                <th className="pb-2">Eficiência</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.unidades.map((u) => (
-                <tr key={u.unidade} className="border-t border-slate-700/60">
-                  <td className="py-2">{u.unidade}</td>
-                  <td className="py-2">{money.format(u.receita)}</td>
-                  <td className="py-2">{u.cirurgias.toLocaleString('pt-BR')}</td>
-                  <td className="py-2">{money.format(u.ticket_medio)}</td>
-                  <td className="py-2">{u.eficiencia.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <section className="mt-6 grid gap-4 lg:grid-cols-3">
+        <div className="glass rounded-2xl p-4"><h3 className="mb-2 text-sm text-slate-300">Funil</h3><ResponsiveContainer width="100%" height={220}><FunnelChart><Tooltip /><Funnel dataKey="value" data={funnelData} isAnimationActive /></FunnelChart></ResponsiveContainer></div>
+        <div className="glass rounded-2xl p-4"><h3 className="mb-2 text-sm text-slate-300">EBITDA por mês</h3><ResponsiveContainer width="100%" height={220}><LineChart data={payload.financeiro.serie}><CartesianGrid stroke="#334155" /><XAxis dataKey="competencia" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Line dataKey="ebitda" stroke="#22d3ee" strokeWidth={2} /></LineChart></ResponsiveContainer></div>
+        <div className="glass rounded-2xl p-4"><h3 className="mb-2 text-sm text-slate-300">Lucro líquido por mês</h3><ResponsiveContainer width="100%" height={220}><LineChart data={payload.financeiro.serie}><CartesianGrid stroke="#334155" /><XAxis dataKey="competencia" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Line dataKey="lucro_liquido" stroke="#a78bfa" strokeWidth={2} /></LineChart></ResponsiveContainer></div>
       </section>
     </div>
   );
