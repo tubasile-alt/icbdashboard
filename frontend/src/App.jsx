@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Funnel, FunnelChart, Line, LineChart, Res
 
 import KpiCard from './components/KpiCard';
 import UpdateBadge from './components/UpdateBadge';
+import FinancialDreCard from './components/FinancialDreCard';
 import { getDashboardBundle } from './lib/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -328,6 +329,12 @@ export default function App() {
           <KpiCard title="% Notas Fiscais" value={pct(s?.fiscal?.percentual_nf)} />
         </div>
       </section>
+
+      <FinancialDreCard
+        summaryFinanceiro={s?.financeiro}
+        financeiroSerie={financeiroSerie}
+        unidades={unidades}
+      />
 
       <section className="mt-6 grid gap-4 lg:grid-cols-3">
         <ChartOrEmpty title="Receita por unidade" hasData={unidades.length > 0}>
