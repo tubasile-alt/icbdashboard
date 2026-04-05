@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -7,6 +8,14 @@ from sqlalchemy.orm import Session
 
 from ..alerts_service import build_alerts
 from ..models import FactFinanceiroMensal, FactFiscalMensal, FactProducaoProfissionalMensal, FactUnidadeMensal, Metadata
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        v = float(value)
+        return default if (math.isnan(v) or math.isinf(v)) else v
+    except (TypeError, ValueError):
+        return default
 
 
 def _status_from_timestamp(last_update: datetime | None, stale_threshold_hours: int) -> str:
@@ -69,30 +78,35 @@ def get_dashboard_summary(db: Session, filters: dict) -> dict:
     q_fiscal = _apply_filters(q_fiscal, FactFiscalMensal, filters)
     percentual_nf = db.scalar(q_fiscal) or 0
 
+    leads_f = _safe_float(leads)
+    consultas_f = _safe_float(consultas)
+    cirurgias_f = _safe_float(cirurgias)
+    receita_f = _safe_float(receita_operacional)
+
     return {
         "funil": {
-            "leads": float(leads),
-            "consultas": float(consultas),
-            "cirurgias": float(cirurgias),
-            "conv_lead_consulta": float((consultas / leads) if leads else 0),
-            "conv_consulta_cirurgia": float((cirurgias / consultas) if consultas else 0),
+            "leads": leads_f,
+            "consultas": consultas_f,
+            "cirurgias": cirurgias_f,
+            "conv_lead_consulta": _safe_float(consultas_f / leads_f if leads_f else 0),
+            "conv_consulta_cirurgia": _safe_float(cirurgias_f / consultas_f if consultas_f else 0),
         },
         "eficiencia": {
-            "receita_por_lead": float((receita_operacional / leads) if leads else 0),
-            "receita_por_consulta": float((receita_operacional / consultas) if consultas else 0),
-            "cirurgias_por_consulta": float((cirurgias / consultas) if consultas else 0),
-            "ticket_medio_cirurgia": float((receita_operacional / cirurgias) if cirurgias else 0),
+            "receita_por_lead": _safe_float(receita_f / leads_f if leads_f else 0),
+            "receita_por_consulta": _safe_float(receita_f / consultas_f if consultas_f else 0),
+            "cirurgias_por_consulta": _safe_float(cirurgias_f / consultas_f if consultas_f else 0),
+            "ticket_medio_cirurgia": _safe_float(receita_f / cirurgias_f if cirurgias_f else 0),
         },
-        "operacional": {"receita_operacional": float(receita_operacional)},
+        "operacional": {"receita_operacional": receita_f},
         "financeiro": {
-            "receita_bruta": float(receita_bruta),
-            "receita_liquida": float(receita_liquida),
-            "ebitda": float(ebitda),
-            "margem_ebitda": float(margem_ebitda),
-            "lucro_liquido": float(lucro_liquido),
-            "margem_liquida": float(margem_liquida),
+            "receita_bruta": _safe_float(receita_bruta),
+            "receita_liquida": _safe_float(receita_liquida),
+            "ebitda": _safe_float(ebitda),
+            "margem_ebitda": _safe_float(margem_ebitda),
+            "lucro_liquido": _safe_float(lucro_liquido),
+            "margem_liquida": _safe_float(margem_liquida),
         },
-        "fiscal": {"percentual_nf": float(percentual_nf)},
+        "fiscal": {"percentual_nf": _safe_float(percentual_nf)},
     }
 
 
@@ -114,13 +128,13 @@ def get_unidades_dashboard(db: Session, filters: dict) -> list[dict]:
         result.append(
             {
                 "unidade": unidade,
-                "receita_operacional": float(receita or 0),
-                "leads": float(leads or 0),
-                "consultas_totais": float(consultas or 0),
-                "cirurgias": float(cirurgias or 0),
-                "ticket_medio_cirurgia": float((receita or 0) / cirurgias) if cirurgias else 0,
-                "conv_consulta_cirurgia": float((cirurgias or 0) / consultas) if consultas else 0,
-                "receita_por_consulta": float((receita or 0) / consultas) if consultas else 0,
+                "receita_operacional": _safe_float(receita),
+                "leads": _safe_float(leads),
+                "consultas_totais": _safe_float(consultas),
+                "cirurgias": _safe_float(cirurgias),
+                "ticket_medio_cirurgia": _safe_float(_safe_float(receita) / _safe_float(cirurgias)) if cirurgias else 0,
+                "conv_consulta_cirurgia": _safe_float(_safe_float(cirurgias) / _safe_float(consultas)) if consultas else 0,
+                "receita_por_consulta": _safe_float(_safe_float(receita) / _safe_float(consultas)) if consultas else 0,
                 "mes_incompleto": bool(mes_incompleto),
                 "dados_inconsistentes": bool(inconsistente),
             }
@@ -148,9 +162,9 @@ def get_profissionais_dashboard(db: Session, filters: dict) -> list[dict]:
         {
             "profissional": p,
             "unidade": u,
-            "consultas_totais": float(c or 0),
-            "retornos_totais": float(r or 0),
-            "cirurgias": float(s or 0),
+            "consultas_totais": _safe_float(c),
+            "retornos_totais": _safe_float(r),
+            "cirurgias": _safe_float(s),
             "mes_incompleto": bool(mi),
             "dados_inconsistentes": bool(di),
         }
@@ -166,17 +180,48 @@ def get_financeiro_dashboard(db: Session, filters: dict) -> dict:
     ).group_by(FactFinanceiroMensal.competencia).order_by(FactFinanceiroMensal.competencia)
 
     q = _apply_filters(q, FactFinanceiroMensal, filters)
-    series = [{"competencia": c, "ebitda": float(e or 0), "lucro_liquido": float(l or 0)} for c, e, l in db.execute(q).all()]
+    series = [{"competencia": c, "ebitda": _safe_float(e), "lucro_liquido": _safe_float(l)} for c, e, l in db.execute(q).all()]
     return {"serie": series}
 
 
 def get_fiscal_dashboard(db: Session, filters: dict) -> dict:
     q = select(FactFiscalMensal.competencia, func.avg(FactFiscalMensal.percentual_nf)).group_by(FactFiscalMensal.competencia).order_by(FactFiscalMensal.competencia)
     q = _apply_filters(q, FactFiscalMensal, filters)
-    series = [{"competencia": c, "percentual_nf": float(p or 0)} for c, p in db.execute(q).all()]
+    series = [{"competencia": c, "percentual_nf": _safe_float(p)} for c, p in db.execute(q).all()]
     return {"serie": series}
 
 
 def get_alertas_dashboard(db: Session, filters: dict) -> list[dict]:
     del filters
     return build_alerts(db)
+
+
+def get_filter_options(db: Session) -> dict:
+    anos_op = [int(r[0]) for r in db.execute(select(FactUnidadeMensal.ano).distinct().order_by(FactUnidadeMensal.ano)).all()]
+    meses_op = [int(r[0]) for r in db.execute(select(FactUnidadeMensal.mes).distinct().order_by(FactUnidadeMensal.mes)).all()]
+    competencias_op = [r[0] for r in db.execute(select(FactUnidadeMensal.competencia).distinct().order_by(FactUnidadeMensal.competencia)).all()]
+    competencias_fin = [r[0] for r in db.execute(select(FactFinanceiroMensal.competencia).distinct().order_by(FactFinanceiroMensal.competencia)).all()]
+    competencias_fisc = [r[0] for r in db.execute(select(FactFiscalMensal.competencia).distinct().order_by(FactFiscalMensal.competencia)).all()]
+
+    all_competencias = sorted(set(competencias_op + competencias_fin + competencias_fisc))
+    all_anos: set[int] = set(anos_op)
+    all_meses: set[int] = set(meses_op)
+    for comp in all_competencias:
+        parts = str(comp).split("-")
+        if len(parts) == 2:
+            try:
+                all_anos.add(int(parts[0]))
+                all_meses.add(int(parts[1]))
+            except ValueError:
+                pass
+
+    unidades = [r[0] for r in db.execute(select(FactUnidadeMensal.unidade).distinct().order_by(FactUnidadeMensal.unidade)).all()]
+    profissionais = [r[0] for r in db.execute(select(FactProducaoProfissionalMensal.profissional).distinct().order_by(FactProducaoProfissionalMensal.profissional)).all()]
+
+    return {
+        "anos": sorted(all_anos),
+        "meses": sorted(all_meses),
+        "competencias": all_competencias,
+        "unidades": unidades,
+        "profissionais": profissionais,
+    }

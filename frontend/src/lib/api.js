@@ -34,3 +34,8 @@ export const getDashboardBundle = async (filters = {}) => {
     alertas: alertas.data,
   };
 };
+
+export const getFilterOptions = async () => {
+  const res = await api.get('/dashboard/options');
+  return res.data;
+};

@@ -10,6 +10,7 @@ from .api.dashboard_service import (
     get_dashboard_summary,
     get_financeiro_dashboard,
     get_fiscal_dashboard,
+    get_filter_options,
     get_last_update_status,
     get_alertas_dashboard,
     get_profissionais_dashboard,
@@ -105,6 +106,11 @@ def dashboard_fiscal(filters: dict = Depends(_filters), db: Session = Depends(ge
 @app.get("/dashboard/alertas")
 def dashboard_alertas(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
     return get_alertas_dashboard(db, filters)
+
+
+@app.get("/dashboard/options")
+def dashboard_options(db: Session = Depends(get_db)):
+    return get_filter_options(db)
 
 
 @app.get("/dropbox/test")

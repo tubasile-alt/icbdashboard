@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Funnel, FunnelChart, Line, LineChart, Res
 import KpiCard from './components/KpiCard';
 import UpdateBadge from './components/UpdateBadge';
 import FinancialDreCard from './components/FinancialDreCard';
-import { getDashboardBundle } from './lib/api';
+import { getDashboardBundle, getFilterOptions } from './lib/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const integer = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
@@ -46,6 +46,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({ anos: [], meses: [], competencias: [], unidades: [], profissionais: [] });
   const [expandedAlertGroups, setExpandedAlertGroups] = useState({});
+  const [filterOptions, setFilterOptions] = useState({ anos: [], meses: [], competencias: [], unidades: [], profissionais: [] });
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -60,38 +61,56 @@ export default function App() {
     }
   };
 
+  const fetchOptions = async () => {
+    try {
+      const opts = await getFilterOptions();
+      setFilterOptions(opts);
+    } catch {
+      // silently ignore - options will be populated from payload as fallback
+    }
+  };
+
   useEffect(() => {
     fetchData();
     const id = setInterval(fetchData, 60_000);
     return () => clearInterval(id);
   }, [JSON.stringify(filters)]);
 
+  useEffect(() => {
+    fetchOptions();
+    const id = setInterval(fetchOptions, 300_000);
+    return () => clearInterval(id);
+  }, []);
+
   const options = useMemo(() => {
+    // Fonte primária: endpoint dedicado de opções
+    if (filterOptions.anos.length > 0 || filterOptions.unidades.length > 0) {
+      return filterOptions;
+    }
+    // Fallback: derivar do payload enquanto as opções não carregam
     const anos = new Set();
     const meses = new Set();
     const competencias = new Set();
 
-    (payload?.financeiro?.serie || []).forEach((x) => {
-      if (x.competencia) {
-        competencias.add(x.competencia);
-        const [a, m] = String(x.competencia).split('-');
-        if (a) anos.add(Number(a));
-        if (m) meses.add(Number(m));
-      }
-    });
+    const addComp = (comp) => {
+      if (!comp) return;
+      competencias.add(comp);
+      const [a, m] = String(comp).split('-');
+      if (a && Number(a) > 0) anos.add(Number(a));
+      if (m && Number(m) > 0) meses.add(Number(m));
+    };
 
-    (payload?.fiscal?.serie || []).forEach((x) => {
-      if (x.competencia) competencias.add(x.competencia);
-    });
+    (payload?.financeiro?.serie || []).forEach((x) => addComp(x.competencia));
+    (payload?.fiscal?.serie || []).forEach((x) => addComp(x.competencia));
 
     return {
       anos: [...anos].filter(Boolean).sort((a, b) => a - b),
       meses: [...meses].filter(Boolean).sort((a, b) => a - b),
       competencias: [...competencias].sort(),
-      unidades: [...new Set((payload?.unidades || []).map((u) => u.unidade))],
-      profissionais: [...new Set((payload?.profissionais || []).map((p) => p.profissional))],
+      unidades: [...new Set((payload?.unidades || []).map((u) => u.unidade))].filter(Boolean).sort(),
+      profissionais: [...new Set((payload?.profissionais || []).map((p) => p.profissional))].filter(Boolean).sort(),
     };
-  }, [payload]);
+  }, [payload, filterOptions]);
 
   const groupedAlerts = useMemo(() => {
     const groups = {};

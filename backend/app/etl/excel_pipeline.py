@@ -40,6 +40,12 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return normalized
 
 
+_MES_MAP = {
+    "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
+    "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12,
+}
+
+
 def _sheet_or_empty(sheets: dict[str, pd.DataFrame], sheet_name: str) -> tuple[pd.DataFrame, int]:
     if sheet_name not in sheets:
         return pd.DataFrame(), 0
@@ -47,6 +53,172 @@ def _sheet_or_empty(sheets: dict[str, pd.DataFrame], sheet_name: str) -> tuple[p
     empty_count = int(raw.isna().all(axis=0).sum())
     clean = raw.dropna(axis=1, how="all")
     return _normalize_columns(clean), empty_count
+
+
+def _parse_dre_sheets(sheets: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, int]:
+    """
+    Extrai dados financeiros das abas mensais de despesa.
+    Padrão de nome: 'Despesas [MES] [ANO]'  (ex: 'Despesas JAN 2026')
+    Estrutura: linha 0 vazia, linha 1 = header, linhas 2+ = dados por unidade.
+    Mapeamento de colunas:
+      UNIDADE -> unidade
+      RECEITA BRUTA -> receita_bruta
+      ISS/PIS/COFINS | Imposto -> impostos
+      DEVOLUÇÕES -> devolucoes (ignorado)
+      RECEITA LIQUIDA -> receita_liquida
+      CUSTOS / DESPESAS -> despesas
+      EBITDA -> ebitda
+      MARGEM EBITDA -> margem_ebitda
+      IRPJ/CSLL -> irpj (ignorado)
+      LL -> lucro_liquido
+      MARGEM LIQUIDA -> margem_liquida
+    """
+    col_map = {
+        "unidade": "unidade",
+        "receita_bruta": "receita_bruta",
+        "iss_pis_cofins": "impostos",
+        "impostos": "impostos",
+        "receita_liquida": "receita_liquida",
+        "receita_liq": "receita_liquida",
+        "custos_despesas": "despesas",
+        "custos_despesas_com_impostos": "despesas",
+        "despesas": "despesas",
+        "ebitda": "ebitda",
+        "margem_ebitda": "margem_ebitda",
+        "ll": "lucro_liquido",
+        "lucro_liquido": "lucro_liquido",
+        "margem_liquida": "margem_liquida",
+        "margem_liq": "margem_liquida",
+    }
+
+    rows: list[dict] = []
+    empty_count = 0
+
+    for sheet_name, raw in sheets.items():
+        match = re.match(r"Despesas\s+([A-Z]{3})\s+(\d{4})\s*$", sheet_name.strip(), re.IGNORECASE)
+        if not match:
+            continue
+
+        mes = _MES_MAP.get(match.group(1).upper())
+        ano = int(match.group(2))
+        if not mes:
+            continue
+
+        competencia = f"{ano}-{mes:02d}"
+
+        clean = raw.dropna(axis=1, how="all").dropna(axis=0, how="all")
+        empty_count += int(raw.isna().all(axis=0).sum())
+
+        if len(clean) < 2:
+            continue
+
+        header_row_idx = None
+        for i, row in clean.iterrows():
+            row_vals = [str(v).strip().upper() for v in row.values if pd.notna(v) and str(v).strip()]
+            if any("UNIDADE" in v or "RECEITA" in v for v in row_vals):
+                header_row_idx = i
+                break
+
+        if header_row_idx is None:
+            clean.columns = range(len(clean.columns))
+            header_row_idx = 0
+
+        headers = clean.loc[header_row_idx]
+        data = clean.loc[header_row_idx + 1:].copy()
+        data.columns = [str(h) for h in headers]
+        data = _normalize_columns(data)
+        data = data.rename(columns=col_map)
+        data = data.dropna(subset=["unidade"])
+        data = data[data["unidade"].astype(str).str.strip().ne("")]
+        data = data[~data["unidade"].astype(str).str.upper().isin(["UNIDADE", "TOTAL", "NAN"])]
+
+        for _, r in data.iterrows():
+            unidade = str(r.get("unidade", "")).strip()
+            if not unidade:
+                continue
+            rows.append({
+                "ano": ano,
+                "mes": mes,
+                "competencia": competencia,
+                "unidade": unidade,
+                "receita_bruta": pd.to_numeric(r.get("receita_bruta", 0), errors="coerce") or 0,
+                "impostos": pd.to_numeric(r.get("impostos", 0), errors="coerce") or 0,
+                "receita_liquida": pd.to_numeric(r.get("receita_liquida", 0), errors="coerce") or 0,
+                "despesas": pd.to_numeric(r.get("despesas", 0), errors="coerce") or 0,
+                "ebitda": pd.to_numeric(r.get("ebitda", 0), errors="coerce") or 0,
+                "margem_ebitda": pd.to_numeric(r.get("margem_ebitda", 0), errors="coerce") or 0,
+                "lucro_liquido": pd.to_numeric(r.get("lucro_liquido", 0), errors="coerce") or 0,
+                "margem_liquida": pd.to_numeric(r.get("margem_liquida", 0), errors="coerce") or 0,
+            })
+
+    if not rows:
+        return pd.DataFrame(), empty_count
+
+    df = pd.DataFrame(rows)
+    df = df[df["receita_bruta"].abs() + df["receita_liquida"].abs() + df["lucro_liquido"].abs() > 0]
+    return df, empty_count
+
+
+def _parse_fiscal_sheet(sheets: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Extrai dados da aba '% Notas fiscais'.
+    Estrutura: blocos lado a lado por ano, sem coluna de unidade.
+    Linha 0: ano (ex: 2025, 2026)
+    Linha 1: Mês | Vendas | NF | %  (repetido para cada ano)
+    Linhas 2+: JAN | valor | valor | valor
+    """
+    raw = sheets.get("% Notas fiscais")
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+
+    clean = raw.dropna(axis=1, how="all")
+    rows: list[dict] = []
+
+    ano_row = clean.iloc[0]
+    header_row = clean.iloc[1]
+
+    block_start = None
+    block_ano = None
+
+    for col_idx, (ano_val, hdr_val) in enumerate(zip(ano_row, header_row)):
+        ano_str = str(ano_val).strip()
+        hdr_str = str(hdr_val).strip().upper()
+
+        if re.match(r"^\d{4}$", ano_str):
+            block_start = col_idx
+            block_ano = int(ano_str)
+
+        if block_start is not None and block_ano is not None and "MÊS" in hdr_str or "MES" in hdr_str:
+            data_rows = clean.iloc[2:]
+            mes_col = col_idx
+            vendas_col = col_idx + 1
+            nf_col = col_idx + 2
+            pct_col = col_idx + 3
+
+            for _, data_row in data_rows.iterrows():
+                mes_str = str(data_row.iloc[mes_col] if mes_col < len(data_row) else "").strip().upper()
+                mes_num = _MES_MAP.get(mes_str)
+                if not mes_num:
+                    continue
+
+                vendas = pd.to_numeric(data_row.iloc[vendas_col] if vendas_col < len(data_row) else 0, errors="coerce") or 0
+                nf = pd.to_numeric(data_row.iloc[nf_col] if nf_col < len(data_row) else 0, errors="coerce") or 0
+                pct_nf = pd.to_numeric(data_row.iloc[pct_col] if pct_col < len(data_row) else 0, errors="coerce") or 0
+
+                rows.append({
+                    "ano": block_ano,
+                    "mes": mes_num,
+                    "competencia": f"{block_ano}-{mes_num:02d}",
+                    "unidade": None,
+                    "unidade_ref": "__CONSOLIDADO__",
+                    "receita_com_nf": float(nf),
+                    "receita_sem_nf": float(vendas - nf) if vendas >= nf else 0.0,
+                    "percentual_nf": float(pct_nf),
+                })
+
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
 def _pick(df: pd.DataFrame, options: list[str], required: bool = False) -> str | None:
@@ -116,8 +288,9 @@ def process_excel_full_refresh(
 
     sheets = pd.read_excel(excel_path, sheet_name=None)
     base_df, empty_base = _sheet_or_empty(sheets, "Base Dados")
-    dre_df, empty_dre = _sheet_or_empty(sheets, "Despesas 2026")
-    fiscal_df, empty_fiscal = _sheet_or_empty(sheets, "% Notas fiscais")
+    dre_df, empty_dre = _parse_dre_sheets(sheets)
+    fiscal_df = _parse_fiscal_sheet(sheets)
+    empty_fiscal = 0
 
     if base_df.empty:
         raise RuntimeError("A aba 'Base Dados' está ausente ou vazia.")
@@ -264,77 +437,44 @@ def process_excel_full_refresh(
                 )
             )
 
-    # Despesas 2026 (financeiro)
+    # DRE: abas mensais "Despesas JAN 2026", "Despesas FEV 2026" etc.
     if not dre_df.empty:
-        dre_df = _derive_period(dre_df)
         processed_rows += len(dre_df)
-        unidade_fin_col = _pick(dre_df, ["unidade", "clinica", "filial"])
-
-        for col in ["receita_bruta", "impostos", "receita_liquida", "custos", "despesas", "ebitda", "margem_ebitda", "lucro_liquido", "margem_liquida"]:
-            dre_df[col] = _to_number(dre_df[col]) if col in dre_df.columns else 0
-
-        group_keys = ["competencia", "ano", "mes"] + ([unidade_fin_col] if unidade_fin_col else [])
-        fin_month = dre_df.groupby(group_keys, as_index=False).agg(
-            {
-                "receita_bruta": "sum",
-                "impostos": "sum",
-                "receita_liquida": "sum",
-                "custos": "sum",
-                "despesas": "sum",
-                "ebitda": "sum",
-                "margem_ebitda": "mean",
-                "lucro_liquido": "sum",
-                "margem_liquida": "mean",
-            }
-        )
-
-        for _, row in fin_month.iterrows():
+        for _, row in dre_df.iterrows():
+            unidade = str(row.get("unidade") or "").strip() or None
             db.add(
                 FactFinanceiroMensal(
                     ano=int(row["ano"]),
                     mes=int(row["mes"]),
                     competencia=row["competencia"],
-                    unidade=row[unidade_fin_col] if unidade_fin_col else None,
-                    unidade_ref=str(row[unidade_fin_col]).strip() if unidade_fin_col else "__CONSOLIDADO__",
-                    receita_bruta=float(row["receita_bruta"]),
-                    impostos=float(row["impostos"]),
-                    receita_liquida=float(row["receita_liquida"]),
-                    custos=float(row["custos"]),
-                    despesas=float(row["despesas"]),
-                    ebitda=float(row["ebitda"]),
-                    margem_ebitda=float(row["margem_ebitda"]),
-                    lucro_liquido=float(row["lucro_liquido"]),
-                    margem_liquida=float(row["margem_liquida"]),
+                    unidade=unidade,
+                    unidade_ref=unidade if unidade else "__CONSOLIDADO__",
+                    receita_bruta=float(row.get("receita_bruta") or 0),
+                    impostos=float(row.get("impostos") or 0),
+                    receita_liquida=float(row.get("receita_liquida") or 0),
+                    custos=0.0,
+                    despesas=float(row.get("despesas") or 0),
+                    ebitda=float(row.get("ebitda") or 0),
+                    margem_ebitda=float(row.get("margem_ebitda") or 0),
+                    lucro_liquido=float(row.get("lucro_liquido") or 0),
+                    margem_liquida=float(row.get("margem_liquida") or 0),
                 )
             )
 
-    # % Notas fiscais (fiscal)
+    # Fiscal: aba "% Notas fiscais"
     if not fiscal_df.empty:
-        fiscal_df = _derive_period(fiscal_df)
         processed_rows += len(fiscal_df)
-        unidade_fiscal_col = _pick(fiscal_df, ["unidade", "clinica", "filial"])
-        percentual_nf_col = _pick(fiscal_df, ["percentual_nf", "percentual_notas_fiscais", "_notas_fiscais"])
-
-        fiscal_df["percentual_nf"] = _to_number(fiscal_df[percentual_nf_col]) if percentual_nf_col else 0
-        fiscal_df["receita_com_nf"] = _to_number(fiscal_df["receita_com_nf"]) if "receita_com_nf" in fiscal_df.columns else 0
-        fiscal_df["receita_sem_nf"] = _to_number(fiscal_df["receita_sem_nf"]) if "receita_sem_nf" in fiscal_df.columns else 0
-
-        group_keys = ["competencia", "ano", "mes"] + ([unidade_fiscal_col] if unidade_fiscal_col else [])
-        fiscal_month = fiscal_df.groupby(group_keys, as_index=False).agg(
-            {"percentual_nf": "mean", "receita_com_nf": "sum", "receita_sem_nf": "sum"}
-        )
-
-        for _, row in fiscal_month.iterrows():
+        for _, row in fiscal_df.iterrows():
             db.add(
                 FactFiscalMensal(
                     ano=int(row["ano"]),
                     mes=int(row["mes"]),
                     competencia=row["competencia"],
-                    unidade=row[unidade_fiscal_col] if unidade_fiscal_col else None,
-                    unidade_ref=str(row[unidade_fiscal_col]).strip() if unidade_fiscal_col else "__CONSOLIDADO__",
-                    percentual_nf=float(row["percentual_nf"]),
-                    receita_com_nf=float(row["receita_com_nf"]),
-                    receita_sem_nf=float(row["receita_sem_nf"]),
+                    unidade=row.get("unidade"),
+                    unidade_ref=str(row.get("unidade_ref") or "__CONSOLIDADO__"),
+                    percentual_nf=float(row.get("percentual_nf") or 0),
+                    receita_com_nf=float(row.get("receita_com_nf") or 0),
+                    receita_sem_nf=float(row.get("receita_sem_nf") or 0),
                 )
             )
 
