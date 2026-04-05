@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import FactFinanceiro, FactUnidadeMensal
+from .models import FactFinanceiroMensal, FactUnidadeMensal
 
 MARGEM_CRITICA = -0.05
 YOY_QUEDA_CRITICA = -0.20
@@ -47,10 +47,10 @@ def build_alerts(db: Session) -> list[dict]:
 def _alerta_financeiro_consolidado(db: Session) -> list[Alerta]:
     rows = db.execute(
         select(
-            FactFinanceiro.competencia,
-            FactFinanceiro.receita_liquida,
-            FactFinanceiro.lucro_liquido,
-        ).order_by(FactFinanceiro.competencia.desc())
+            FactFinanceiroMensal.competencia,
+            FactFinanceiroMensal.receita_liquida,
+            FactFinanceiroMensal.lucro_liquido,
+        ).order_by(FactFinanceiroMensal.competencia.desc())
     ).all()
     if not rows:
         return []
@@ -92,7 +92,7 @@ def _alertas_yoy_unidade(db: Session) -> list[Alerta]:
     atual = {
         unidade: float(receita or 0)
         for unidade, receita in db.execute(
-            select(FactUnidadeMensal.unidade, func.sum(FactUnidadeMensal.receita))
+            select(FactUnidadeMensal.unidade, func.sum(FactUnidadeMensal.receita_operacional))
             .where(FactUnidadeMensal.ano == ano_atual, FactUnidadeMensal.mes <= mes_atual)
             .group_by(FactUnidadeMensal.unidade)
         ).all()
@@ -100,7 +100,7 @@ def _alertas_yoy_unidade(db: Session) -> list[Alerta]:
     anterior = {
         unidade: float(receita or 0)
         for unidade, receita in db.execute(
-            select(FactUnidadeMensal.unidade, func.sum(FactUnidadeMensal.receita))
+            select(FactUnidadeMensal.unidade, func.sum(FactUnidadeMensal.receita_operacional))
             .where(FactUnidadeMensal.ano == ano_anterior, FactUnidadeMensal.mes <= mes_atual)
             .group_by(FactUnidadeMensal.unidade)
         ).all()
@@ -165,7 +165,7 @@ def _alertas_conversao(db: Session) -> list[Alerta]:
         select(
             FactUnidadeMensal.unidade,
             func.sum(FactUnidadeMensal.cirurgias),
-            func.sum(FactUnidadeMensal.consultas),
+            func.sum(FactUnidadeMensal.consultas_totais),
         )
         .where(
             FactUnidadeMensal.ano == ano_ref,
