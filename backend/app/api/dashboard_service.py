@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..alerts_service import build_alerts
 from ..models import FactFinanceiroMensal, FactFiscalMensal, FactProducaoProfissionalMensal, FactUnidadeMensal, Metadata
 
 
@@ -174,3 +175,8 @@ def get_fiscal_dashboard(db: Session, filters: dict) -> dict:
     q = _apply_filters(q, FactFiscalMensal, filters)
     series = [{"competencia": c, "percentual_nf": float(p or 0)} for c, p in db.execute(q).all()]
     return {"serie": series}
+
+
+def get_alertas_dashboard(db: Session, filters: dict) -> list[dict]:
+    del filters
+    return build_alerts(db)

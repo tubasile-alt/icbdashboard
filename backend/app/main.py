@@ -11,6 +11,7 @@ from .api.dashboard_service import (
     get_financeiro_dashboard,
     get_fiscal_dashboard,
     get_last_update_status,
+    get_alertas_dashboard,
     get_profissionais_dashboard,
     get_unidades_dashboard,
 )
@@ -99,6 +100,11 @@ def dashboard_financeiro(filters: dict = Depends(_filters), db: Session = Depend
 @app.get("/dashboard/fiscal")
 def dashboard_fiscal(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
     return get_fiscal_dashboard(db, filters)
+
+
+@app.get("/dashboard/alertas")
+def dashboard_alertas(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
+    return get_alertas_dashboard(db, filters)
 
 
 @app.get("/dropbox/test")
