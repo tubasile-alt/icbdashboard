@@ -14,13 +14,14 @@ const paramsFromFilters = (filters) => {
 
 export const getDashboardBundle = async (filters = {}) => {
   const params = paramsFromFilters(filters);
-  const [last, summary, unidades, profissionais, financeiro, fiscal] = await Promise.all([
+  const [last, summary, unidades, profissionais, financeiro, fiscal, alertas] = await Promise.all([
     api.get('/last-update'),
     api.get('/dashboard/summary', { params }),
     api.get('/dashboard/unidades', { params }),
     api.get('/dashboard/profissionais', { params }),
     api.get('/dashboard/financeiro', { params }),
     api.get('/dashboard/fiscal', { params }),
+    api.get('/dashboard/alertas', { params }),
   ]);
 
   return {
@@ -30,5 +31,6 @@ export const getDashboardBundle = async (filters = {}) => {
     profissionais: profissionais.data,
     financeiro: financeiro.data,
     fiscal: fiscal.data,
+    alertas: alertas.data,
   };
 };
