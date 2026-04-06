@@ -188,6 +188,8 @@ export default function App() {
           cirurgias: safeNumber(u.cirurgias),
           conversao: safeNumber(u.conv_consulta_cirurgia),
           receitaPorProfissional: receita !== null && quantidadeProfissionais > 0 ? receita / quantidadeProfissionais : null,
+          mesIncompleto: Boolean(u.mes_incompleto),
+          dadosInconsistentes: Boolean(u.dados_inconsistentes),
         };
       })
       .sort((a, b) => (safeNumber(b.receita) || -1) - (safeNumber(a.receita) || -1));
@@ -440,20 +442,26 @@ export default function App() {
                   <th className="px-3 py-2">Nº cirurgias</th>
                   <th className="px-3 py-2">Conversão</th>
                   <th className="px-3 py-2">Receita por profissional</th>
+                  <th className="px-3 py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {unidadesTable.map((row) => (
-                  <tr key={row.unidade} className="border-b border-slate-800/70 last:border-b-0">
-                    <TableCell>{row.unidade}</TableCell>
-                    <TableCell>{safeNumber(row.receita) !== null ? money.format(row.receita) : '—'}</TableCell>
-                    <TableCell>{safeNumber(row.ticketMedio) !== null ? money.format(row.ticketMedio) : '—'}</TableCell>
-                    <TableCell>{safeNumber(row.atendimentos) !== null ? integer.format(row.atendimentos) : '—'}</TableCell>
-                    <TableCell>{safeNumber(row.cirurgias) !== null ? integer.format(row.cirurgias) : '—'}</TableCell>
-                    <TableCell>{safeNumber(row.conversao) !== null ? pct(row.conversao) : '—'}</TableCell>
-                    <TableCell>{safeNumber(row.receitaPorProfissional) !== null ? money.format(row.receitaPorProfissional) : '—'}</TableCell>
-                  </tr>
-                ))}
+                {unidadesTable.map((row) => {
+                  const statusText = row.dadosInconsistentes ? 'Inconsistente' : row.mesIncompleto ? 'Mês incompleto' : 'Completo';
+                  const statusColor = row.dadosInconsistentes ? 'text-rose-300' : row.mesIncompleto ? 'text-amber-300' : 'text-emerald-300';
+                  return (
+                    <tr key={row.unidade} className="border-b border-slate-800/70 last:border-b-0">
+                      <TableCell>{row.unidade}</TableCell>
+                      <TableCell>{safeNumber(row.receita) !== null ? money.format(row.receita) : '—'}</TableCell>
+                      <TableCell>{safeNumber(row.ticketMedio) !== null ? money.format(row.ticketMedio) : '—'}</TableCell>
+                      <TableCell>{safeNumber(row.atendimentos) !== null ? integer.format(row.atendimentos) : '—'}</TableCell>
+                      <TableCell>{safeNumber(row.cirurgias) !== null ? integer.format(row.cirurgias) : '—'}</TableCell>
+                      <TableCell>{safeNumber(row.conversao) !== null ? pct(row.conversao) : '—'}</TableCell>
+                      <TableCell>{safeNumber(row.receitaPorProfissional) !== null ? money.format(row.receitaPorProfissional) : '—'}</TableCell>
+                      <TableCell><span className={statusColor}>{statusText}</span></TableCell>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
