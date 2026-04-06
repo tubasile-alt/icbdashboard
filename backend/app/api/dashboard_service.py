@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..alerts_service import build_alerts
+from ..services.unidade_status_service import get_unidades_ativas_para_metricas
 from ..models import FactFinanceiroMensal, FactFiscalMensal, FactProducaoProfissionalMensal, FactUnidadeMensal, Metadata
 
 
@@ -40,6 +41,14 @@ def _apply_filters(query, model, filters: dict):
         query = query.where(model.unidade.in_(filters["unidades"]))
     return query
 
+def _apply_metric_units_scope(query, db: Session, unidade_field):
+    unidades_ativas = get_unidades_ativas_para_metricas(db)
+    if not unidades_ativas:
+        return query
+    return query.where(unidade_field.in_(unidades_ativas))
+
+
+
 
 def get_last_update_status(db: Session, stale_threshold_hours: int) -> dict:
     metadata = db.get(Metadata, 1)
@@ -61,6 +70,7 @@ def get_dashboard_summary(db: Session, filters: dict) -> dict:
         func.coalesce(func.sum(FactUnidadeMensal.cirurgias), 0),
     )
     q_oper = _apply_filters(q_oper, FactUnidadeMensal, filters)
+    q_oper = _apply_metric_units_scope(q_oper, db, FactUnidadeMensal.unidade)
     receita_operacional, leads, consultas, cirurgias = db.execute(q_oper).one()
 
     q_fin = select(
@@ -72,6 +82,8 @@ def get_dashboard_summary(db: Session, filters: dict) -> dict:
         func.coalesce(func.avg(FactFinanceiroMensal.margem_liquida), 0),
     )
     q_fin = _apply_filters(q_fin, FactFinanceiroMensal, filters)
+    q_fin = q_fin.where(FactFinanceiroMensal.unidade_ref != "__CONSOLIDADO__")
+    q_fin = _apply_metric_units_scope(q_fin, db, FactFinanceiroMensal.unidade_ref)
     receita_bruta, receita_liquida, ebitda, margem_ebitda, lucro_liquido, margem_liquida = db.execute(q_fin).one()
 
     q_fiscal = select(func.coalesce(func.avg(FactFiscalMensal.percentual_nf), 0))
@@ -121,6 +133,7 @@ def get_unidades_dashboard(db: Session, filters: dict) -> list[dict]:
         func.bool_or(FactUnidadeMensal.dados_inconsistentes),
     ).group_by(FactUnidadeMensal.unidade)
     q = _apply_filters(q, FactUnidadeMensal, filters)
+    q = _apply_metric_units_scope(q, db, FactUnidadeMensal.unidade)
     rows = db.execute(q.order_by(func.sum(FactUnidadeMensal.receita_operacional).desc())).all()
 
     result = []
@@ -154,6 +167,7 @@ def get_profissionais_dashboard(db: Session, filters: dict) -> list[dict]:
     ).group_by(FactProducaoProfissionalMensal.profissional, FactProducaoProfissionalMensal.unidade)
 
     q = _apply_filters(q, FactProducaoProfissionalMensal, filters)
+    q = _apply_metric_units_scope(q, db, FactProducaoProfissionalMensal.unidade)
     if filters.get("profissionais"):
         q = q.where(FactProducaoProfissionalMensal.profissional.in_(filters["profissionais"]))
 

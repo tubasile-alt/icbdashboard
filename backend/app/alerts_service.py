@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import FactFinanceiroMensal, FactUnidadeMensal
+from .services.unidade_status_service import get_unidades_ativas_para_metricas
 
 MARGEM_CRITICA = -0.05
 YOY_QUEDA_CRITICA = -0.20
@@ -89,6 +90,8 @@ def _alertas_yoy_unidade(db: Session) -> list[Alerta]:
     ano_atual, mes_atual = max_periodo
     ano_anterior = ano_atual - 1
 
+    unidades_ativas = get_unidades_ativas_para_metricas(db)
+
     atual = {
         unidade: float(receita or 0)
         for unidade, receita in db.execute(
@@ -96,6 +99,7 @@ def _alertas_yoy_unidade(db: Session) -> list[Alerta]:
             .where(FactUnidadeMensal.ano == ano_atual, FactUnidadeMensal.mes <= mes_atual)
             .group_by(FactUnidadeMensal.unidade)
         ).all()
+        if not unidades_ativas or unidade in unidades_ativas
     }
     anterior = {
         unidade: float(receita or 0)
@@ -104,6 +108,7 @@ def _alertas_yoy_unidade(db: Session) -> list[Alerta]:
             .where(FactUnidadeMensal.ano == ano_anterior, FactUnidadeMensal.mes <= mes_atual)
             .group_by(FactUnidadeMensal.unidade)
         ).all()
+        if not unidades_ativas or unidade in unidades_ativas
     }
 
     variacoes: list[tuple[str, float]] = []
@@ -173,6 +178,10 @@ def _alertas_conversao(db: Session) -> list[Alerta]:
         )
         .group_by(FactUnidadeMensal.unidade)
     ).all()
+
+    unidades_ativas = get_unidades_ativas_para_metricas(db)
+    if unidades_ativas:
+        rows = [r for r in rows if r[0] in unidades_ativas]
 
     baixas: list[tuple[str, float, float, float]] = []
     for unidade, cirurgias, consultas in rows:

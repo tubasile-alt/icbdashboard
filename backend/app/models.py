@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -91,6 +91,21 @@ class FactFiscalMensal(Base):
     percentual_nf: Mapped[float] = mapped_column(Float, default=0)
     receita_com_nf: Mapped[float] = mapped_column(Float, default=0)
     receita_sem_nf: Mapped[float] = mapped_column(Float, default=0)
+
+
+class UnidadeStatus(Base):
+    __tablename__ = "unidade_status"
+    __table_args__ = (UniqueConstraint("unidade", name="uq_unidade_status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    unidade: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ativa")
+    data_abertura: Mapped[date | None] = mapped_column(Date, nullable=True)
+    data_encerramento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    excluir_de_medias: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    atualizado_em: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Metadata(Base):
