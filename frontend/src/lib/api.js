@@ -14,7 +14,7 @@ const paramsFromFilters = (filters) => {
 
 export const getDashboardBundle = async (filters = {}) => {
   const params = paramsFromFilters(filters);
-  const [last, summary, unidades, profissionais, financeiro, fiscal, alertas] = await Promise.all([
+  const [last, summary, unidades, profissionais, financeiro, fiscal, alertas, unidadesStatus] = await Promise.all([
     api.get('/last-update'),
     api.get('/dashboard/summary', { params }),
     api.get('/dashboard/unidades', { params }),
@@ -22,6 +22,7 @@ export const getDashboardBundle = async (filters = {}) => {
     api.get('/dashboard/financeiro', { params }),
     api.get('/dashboard/fiscal', { params }),
     api.get('/dashboard/alertas', { params }),
+    api.get('/unidades/status'),
   ]);
 
   return {
@@ -32,6 +33,7 @@ export const getDashboardBundle = async (filters = {}) => {
     financeiro: financeiro.data,
     fiscal: fiscal.data,
     alertas: alertas.data,
+    unidadesStatus: unidadesStatus.data,
   };
 };
 

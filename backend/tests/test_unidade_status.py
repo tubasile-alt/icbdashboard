@@ -133,7 +133,11 @@ def test_seed_idempotent_and_endpoint_functions_and_metric_filters(tmp_path: Pat
         )
         db.commit()
 
-        status_rows = unidades_status(db)
+        status_payload = unidades_status(db)
+        status_rows = status_payload["items"]
+        assert status_payload["summary"]["encerrada"] >= 1
+        assert any(item["tipo"] == "status_incerto" for item in status_payload["timeline"])
+
         assert status_rows == sorted(
             status_rows,
             key=lambda r: (
@@ -179,6 +183,7 @@ def test_seed_idempotent_and_endpoint_functions_and_metric_filters(tmp_path: Pat
         # Histórico preservado em opções de filtros
         options = get_filter_options(db)
         assert "Fechada" in options["unidades"]
+        assert any(row["unidade"] == "Rio de Janeiro" for row in status_rows)
 
 
 def test_sync_refresh_nao_apaga_tabela_unidade_status(tmp_path: Path):
