@@ -113,14 +113,6 @@ export default function StatusUnidadesPanel({ data }) {
         })}
       </div>
 
-      <div className="mt-4 rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-4">
-        <p className="text-sm font-semibold text-cyan-200">Correção de viés</p>
-        <p className="mt-2 text-sm text-slate-300">
-          Correção de viés: as unidades encerradas são automaticamente excluídas das médias de conversão, margem e benchmarks da rede.
-          Os dados históricos continuam visíveis para análise de tendência.
-        </p>
-      </div>
-
       <div className="mt-4 rounded-xl border border-slate-700/70 bg-slate-950/20">
         <button
           type="button"
