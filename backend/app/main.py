@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -16,10 +16,11 @@ from .api.dashboard_service import (
     get_profissionais_dashboard,
     get_unidades_dashboard,
 )
-from .database import Base, engine, get_db
-from .schemas import LastUpdateResponse
+from .database import Base, SessionLocal, engine, get_db
+from .schemas import LastUpdateResponse, UnidadeStatusPatchRequest, UnidadeStatusResponse
 from .services.dropbox_service import init_dropbox
 from .sync_job import run_sync_loop
+from .services.unidade_status_service import list_unidades_status, seed_unidade_status, update_unidade_status_manual
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
+    db = SessionLocal()
+    try:
+        created = seed_unidade_status(db, force=False)
+        if created:
+            logger.info("Seed de unidade_status aplicado: %s registro(s)", created)
+    finally:
+        db.close()
+
     try:
         init_dropbox(
             app_key=settings.dropbox_app_key,
@@ -111,6 +120,29 @@ def dashboard_alertas(filters: dict = Depends(_filters), db: Session = Depends(g
 @app.get("/dashboard/options")
 def dashboard_options(db: Session = Depends(get_db)):
     return get_filter_options(db)
+
+
+@app.get("/unidades/status", response_model=list[UnidadeStatusResponse])
+def unidades_status(db: Session = Depends(get_db)):
+    return list_unidades_status(db)
+
+
+@app.patch("/unidades/status/{unidade}", response_model=UnidadeStatusResponse)
+def patch_unidade_status(
+    payload: UnidadeStatusPatchRequest,
+    unidade: str = Path(..., description="Nome da unidade"),
+    db: Session = Depends(get_db),
+):
+    return update_unidade_status_manual(
+        db,
+        unidade,
+        status=payload.status,
+        data_abertura=payload.data_abertura,
+        data_encerramento=payload.data_encerramento,
+        motivo=payload.motivo,
+        observacao=payload.observacao,
+        excluir_de_medias=payload.excluir_de_medias,
+    )
 
 
 @app.get("/dropbox/test")
