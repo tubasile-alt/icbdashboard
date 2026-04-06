@@ -53,6 +53,8 @@ const truncateText = (value, max = 55) => {
 export default function StatusUnidadesPanel({ data }) {
   const [activeFilter, setActiveFilter] = useState(null);
   const [expandedRows, setExpandedRows] = useState({});
+  const [showTable, setShowTable] = useState(true);
+  const [showTimeline, setShowTimeline] = useState(true);
 
   const items = data?.items || [];
 
@@ -119,66 +121,95 @@ export default function StatusUnidadesPanel({ data }) {
         </p>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-700/70 bg-slate-950/20">
-        <table className="min-w-full text-left">
-          <thead>
-            <tr className="border-b border-slate-700 text-xs uppercase tracking-wide text-slate-400">
-              <th className="px-3 py-2">Unidade</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Fechamento</th>
-              <th className="px-3 py-2">Nas médias</th>
-              <th className="px-3 py-2">Motivo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredItems.map((row) => {
-              const rowKey = `${row.unidade}-${row.status}`;
-              const expanded = Boolean(expandedRows[rowKey]);
-              const statusConfig = STATUS_CONFIG[row.status] || { label: row.status, color: '#94a3b8' };
-              const motivo = row.motivo || '—';
-              return (
-                <tr
-                  key={rowKey}
-                  onClick={() => row.motivo && toggleRow(rowKey)}
-                  className={`border-b border-slate-800/70 last:border-b-0 ${row.motivo ? 'cursor-pointer hover:bg-slate-900/50' : ''}`}
-                >
-                  <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-100">{row.unidade || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-sm">
-                    <span className="rounded-full px-2 py-1 text-xs" style={{ color: statusConfig.color, backgroundColor: `${statusConfig.color}20` }}>
-                      {statusConfig.label}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-200">{formatMonthYear(row.data_encerramento)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-200">{row.excluir_de_medias ? 'Não' : 'Sim'}</td>
-                  <td className="px-3 py-2 text-sm text-slate-300">{expanded ? motivo : truncateText(motivo)}</td>
+      <div className="mt-4 rounded-xl border border-slate-700/70 bg-slate-950/20">
+        <button
+          type="button"
+          onClick={() => setShowTable(!showTable)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-slate-900/50"
+        >
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Todas as Unidades</h3>
+            <p className="mt-0.5 text-xs text-slate-400">{filteredItems.length} unidade(s)</p>
+          </div>
+          <span className="text-xl text-slate-400" style={{ transform: showTable ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>▼</span>
+        </button>
+
+        {showTable && (
+          <div className="overflow-x-auto border-t border-slate-700/70">
+            <table className="min-w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-700 text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-2">Unidade</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Fechamento</th>
+                  <th className="px-3 py-2">Nas médias</th>
+                  <th className="px-3 py-2">Motivo</th>
                 </tr>
-              );
-            })}
-            {filteredItems.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-400">Nenhuma unidade para o filtro selecionado.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {filteredItems.map((row) => {
+                  const rowKey = `${row.unidade}-${row.status}`;
+                  const expanded = Boolean(expandedRows[rowKey]);
+                  const statusConfig = STATUS_CONFIG[row.status] || { label: row.status, color: '#94a3b8' };
+                  const motivo = row.motivo || '—';
+                  return (
+                    <tr
+                      key={rowKey}
+                      onClick={() => row.motivo && toggleRow(rowKey)}
+                      className={`border-b border-slate-800/70 last:border-b-0 ${row.motivo ? 'cursor-pointer hover:bg-slate-900/50' : ''}`}
+                    >
+                      <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-100">{row.unidade || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-sm">
+                        <span className="rounded-full px-2 py-1 text-xs" style={{ color: statusConfig.color, backgroundColor: `${statusConfig.color}20` }}>
+                          {statusConfig.label}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-200">{formatMonthYear(row.data_encerramento)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-200">{row.excluir_de_medias ? 'Não' : 'Sim'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-300">{expanded ? motivo : truncateText(motivo)}</td>
+                    </tr>
+                  );
+                })}
+                {filteredItems.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-400">Nenhuma unidade para o filtro selecionado.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      <div className="mt-5 rounded-xl border border-slate-700/70 bg-slate-950/25 p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Timeline de Fechamentos</h3>
-        <div className="mt-3 space-y-3">
-          {timeline.map((item, idx) => (
-            <div key={`${item.unidade}-${item.status}-${idx}`} className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
-              <p className="text-sm font-semibold text-slate-100">
-                {item.unidade} {' '}
-                <span className="text-xs font-normal text-slate-400">
-                  {item.tipo === 'status_incerto' ? 'Status incerto' : formatMonthYear(item.data_encerramento)}
-                </span>
-              </p>
-              <p className="mt-1 text-sm text-slate-300">{item.motivo || '—'}</p>
-            </div>
-          ))}
-          {timeline.length === 0 && <p className="text-sm text-slate-400">Nenhum fechamento registrado.</p>}
-        </div>
+      <div className="mt-5 rounded-xl border border-slate-700/70 bg-slate-950/25">
+        <button
+          type="button"
+          onClick={() => setShowTimeline(!showTimeline)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-slate-900/50"
+        >
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Timeline de Fechamentos</h3>
+            <p className="mt-0.5 text-xs text-slate-400">{timeline.length} evento(s)</p>
+          </div>
+          <span className="text-xl text-slate-400" style={{ transform: showTimeline ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>▼</span>
+        </button>
+
+        {showTimeline && (
+          <div className="space-y-3 border-t border-slate-700/70 p-4">
+            {timeline.map((item, idx) => (
+              <div key={`${item.unidade}-${item.status}-${idx}`} className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
+                <p className="text-sm font-semibold text-slate-100">
+                  {item.unidade} {' '}
+                  <span className="text-xs font-normal text-slate-400">
+                    {item.tipo === 'status_incerto' ? 'Status incerto' : formatMonthYear(item.data_encerramento)}
+                  </span>
+                </p>
+                <p className="mt-1 text-sm text-slate-300">{item.motivo || '—'}</p>
+              </div>
+            ))}
+            {timeline.length === 0 && <p className="text-sm text-slate-400">Nenhum fechamento registrado.</p>}
+          </div>
+        )}
       </div>
 
       <div className="mt-4 text-xs text-slate-400">
