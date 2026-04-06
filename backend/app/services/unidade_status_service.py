@@ -28,22 +28,30 @@ STATUS_VALIDOS = {
 class UnidadeStatusSeed:
     unidade: str
     status: str
-    data_encerramento: date | None
-    motivo: str
     excluir_de_medias: bool
+    data_encerramento: date | None = None
+    motivo: str | None = None
 
 
 SEED_UNIDADES_STATUS: tuple[UnidadeStatusSeed, ...] = (
-    UnidadeStatusSeed("João Pessoa", STATUS_ENCERRADA, date(2024, 6, 1), "Sem atividade após Mai/2024.", True),
-    UnidadeStatusSeed("Londrina", STATUS_ENCERRADA, date(2024, 9, 1), "Sem atividade após Ago/2024. Queda abrupta para 1 cirurgia.", True),
-    UnidadeStatusSeed("Joinville", STATUS_ENCERRADA, date(2024, 11, 1), "Sem atividade após Out/2024. Último mês com 0 consultas.", True),
-    UnidadeStatusSeed("Vitória", STATUS_ENCERRADA, date(2024, 11, 1), "Sem atividade após Out/2024. Receita caiu de R$ 163k para R$ 14k.", True),
-    UnidadeStatusSeed("São Luís", STATUS_ENCERRADA, date(2025, 1, 1), "Sem atividade após Dez/2024.", True),
-    UnidadeStatusSeed("Cuiabá", STATUS_ENCERRADA, date(2025, 2, 1), "Margem -94% e sem atividade após Jan/2025.", True),
-    UnidadeStatusSeed("Barra-RJ", STATUS_ENCERRADA, date(2025, 7, 1), "Volume muito baixo e sem atividade após Jun/2025.", True),
-    UnidadeStatusSeed("Manaus", STATUS_ENCERRADA, date(2025, 8, 1), "Sem atividade após Jul/2025.", True),
-    UnidadeStatusSeed("Fortaleza", STATUS_SUSPENSA, None, "Último dado em Jan/2026. Sem Fev/Mar de 2026, confirmar status.", False),
-    UnidadeStatusSeed("Florianópolis", STATUS_REESTRUTURACAO, None, "Margem muito negativa e queda forte de receita.", False),
+    UnidadeStatusSeed("João Pessoa", STATUS_ENCERRADA, True, date(2024, 6, 1), "Sem atividade após Mai/2024. Último registro: 3 cirurgias, R$ 13.990."),
+    UnidadeStatusSeed("Londrina", STATUS_ENCERRADA, True, date(2024, 9, 1), "Queda abrupta de volume. Último mês: 1 cirurgia, R$ 13.740."),
+    UnidadeStatusSeed("Joinville", STATUS_ENCERRADA, True, date(2024, 11, 1), "Último mês: 0 consultas, 3 cirurgias, R$ 36k. Encerramento após Out/2024."),
+    UnidadeStatusSeed("Vitória", STATUS_ENCERRADA, True, date(2024, 11, 1), "Queda de R$ 163k (Ago/24) para R$ 14k (Out/24). Encerramento imediato."),
+    UnidadeStatusSeed("São Luís", STATUS_ENCERRADA, True, date(2025, 1, 1), "Sem atividade após Dez/2024."),
+    UnidadeStatusSeed("Cuiabá", STATUS_ENCERRADA, True, date(2025, 2, 1), "Margem LL -94% no acumulado 2025. Sem atividade após Jan/2025."),
+    UnidadeStatusSeed("Barra-RJ", STATUS_ENCERRADA, True, date(2025, 7, 1), "Volume muito baixo nos últimos meses. Sem atividade após Jun/2025."),
+    UnidadeStatusSeed("Manaus", STATUS_ENCERRADA, True, date(2025, 8, 1), "Último dado: Jul/2025 (6 cirurgias, R$ 83.800). Sem atividade após."),
+    UnidadeStatusSeed("Fortaleza", STATUS_SUSPENSA, False, None, "Último dado Jan/2026. Sem registros Fev/Mar 2026. Confirmar status com gestão."),
+    UnidadeStatusSeed("Florianópolis", STATUS_REESTRUTURACAO, False, None, "Margem LL -108% em Q1/2026. Receita caiu 61% YoY."),
+    UnidadeStatusSeed("Rio de Janeiro", STATUS_REESTRUTURACAO, False, None, "Margem LL -6,9% em Q1/2026. Custos superam receita líquida."),
+    UnidadeStatusSeed("Ribeirão Preto", STATUS_ATIVA, False, None, None),
+    UnidadeStatusSeed("Brasília", STATUS_ATIVA, False, None, None),
+    UnidadeStatusSeed("Campinas", STATUS_ATIVA, False, None, None),
+    UnidadeStatusSeed("Belo Horizonte", STATUS_ATIVA, False, None, None),
+    UnidadeStatusSeed("Itaim Bibi", STATUS_ATIVA, False, None, None),
+    UnidadeStatusSeed("Goiânia", STATUS_ATIVA, False, None, None),
+    UnidadeStatusSeed("ABC", STATUS_ATIVA, False, None, None),
 )
 
 
@@ -104,16 +112,90 @@ def seed_unidade_status(db: Session, force: bool = False) -> int:
     return created
 
 
-def list_unidades_status(db: Session) -> list[dict[str, Any]]:
-    prioridade = case(
+def _status_priority_expr():
+    return case(
         (UnidadeStatus.status == STATUS_ATIVA, 1),
         (UnidadeStatus.status == STATUS_REESTRUTURACAO, 2),
         (UnidadeStatus.status == STATUS_SUSPENSA, 3),
         (UnidadeStatus.status == STATUS_ENCERRADA, 4),
         else_=5,
     )
+
+
+def _ensure_operational_units_have_status(db: Session) -> int:
+    unidades_operacionais = {
+        normalize_unidade_name(row[0])
+        for row in db.execute(select(FactUnidadeMensal.unidade).distinct()).all()
+        if row[0]
+    }
+    if not unidades_operacionais:
+        return 0
+
+    existentes = {
+        normalize_unidade_name(row[0])
+        for row in db.execute(select(UnidadeStatus.unidade).distinct()).all()
+        if row[0]
+    }
+
+    faltantes = [u for u in unidades_operacionais if u not in existentes]
+    for unidade in faltantes:
+        db.add(
+            UnidadeStatus(
+                unidade=unidade,
+                status=STATUS_ATIVA,
+                excluir_de_medias=False,
+                atualizado_em=datetime.now(timezone.utc),
+            )
+        )
+
+    if faltantes:
+        db.commit()
+    return len(faltantes)
+
+
+def list_unidades_status(db: Session) -> dict[str, Any]:
+    _ensure_operational_units_have_status(db)
+
+    prioridade = _status_priority_expr()
     rows = db.execute(select(UnidadeStatus).order_by(prioridade, func.lower(UnidadeStatus.unidade))).scalars().all()
-    return [_to_dict(row) for row in rows]
+    items = [_to_dict(row) for row in rows]
+
+    summary = {
+        STATUS_ATIVA: sum(1 for row in items if row["status"] == STATUS_ATIVA),
+        STATUS_REESTRUTURACAO: sum(1 for row in items if row["status"] == STATUS_REESTRUTURACAO),
+        STATUS_SUSPENSA: sum(1 for row in items if row["status"] == STATUS_SUSPENSA),
+        STATUS_ENCERRADA: sum(1 for row in items if row["status"] == STATUS_ENCERRADA),
+    }
+
+    encerradas = [row for row in items if row["status"] == STATUS_ENCERRADA]
+    encerradas.sort(key=lambda row: (row["data_encerramento"] is None, row["data_encerramento"] or date.max, row["unidade"].lower()))
+
+    suspensas = sorted(
+        [row for row in items if row["status"] == STATUS_SUSPENSA],
+        key=lambda row: row["unidade"].lower(),
+    )
+
+    timeline = [
+        {
+            "unidade": row["unidade"],
+            "status": row["status"],
+            "data_encerramento": row["data_encerramento"],
+            "motivo": row["motivo"],
+            "tipo": "fechamento",
+        }
+        for row in encerradas
+    ] + [
+        {
+            "unidade": row["unidade"],
+            "status": row["status"],
+            "data_encerramento": None,
+            "motivo": row["motivo"],
+            "tipo": "status_incerto",
+        }
+        for row in suspensas
+    ]
+
+    return {"summary": summary, "items": items, "timeline": timeline}
 
 
 def _unit_exists_in_operational_data(db: Session, unidade: str) -> bool:

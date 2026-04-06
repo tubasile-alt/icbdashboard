@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Funnel, FunnelChart, Line, LineChart, Res
 import KpiCard from './components/KpiCard';
 import UpdateBadge from './components/UpdateBadge';
 import FinancialDreCard from './components/FinancialDreCard';
+import StatusUnidadesPanel from './components/StatusUnidadesPanel';
 import { getDashboardBundle, getFilterOptions } from './lib/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -264,6 +265,8 @@ export default function App() {
           </div>
         </section>
       )}
+
+      <StatusUnidadesPanel data={payload?.unidadesStatus} />
 
       <section>
         <SectionTitle title="ALERTAS EXECUTIVOS" subtitle="Monitoramento por severidade e categoria" />

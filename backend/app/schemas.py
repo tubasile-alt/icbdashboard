@@ -21,6 +21,20 @@ class UnidadeStatusResponse(BaseModel):
     atualizado_em: datetime | None = None
 
 
+class UnidadeStatusTimelineItem(BaseModel):
+    unidade: str
+    status: str
+    data_encerramento: date | None = None
+    motivo: str | None = None
+    tipo: str
+
+
+class UnidadeStatusListResponse(BaseModel):
+    summary: dict[str, int]
+    items: list[UnidadeStatusResponse]
+    timeline: list[UnidadeStatusTimelineItem]
+
+
 class UnidadeStatusPatchRequest(BaseModel):
     status: str | None = None
     data_abertura: date | None = None

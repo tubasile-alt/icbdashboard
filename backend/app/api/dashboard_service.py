@@ -88,6 +88,8 @@ def get_dashboard_summary(db: Session, filters: dict) -> dict:
 
     q_fiscal = select(func.coalesce(func.avg(FactFiscalMensal.percentual_nf), 0))
     q_fiscal = _apply_filters(q_fiscal, FactFiscalMensal, filters)
+    q_fiscal = q_fiscal.where(FactFiscalMensal.unidade_ref != "__CONSOLIDADO__")
+    q_fiscal = _apply_metric_units_scope(q_fiscal, db, FactFiscalMensal.unidade_ref)
     percentual_nf = db.scalar(q_fiscal) or 0
 
     leads_f = _safe_float(leads)

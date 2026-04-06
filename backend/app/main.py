@@ -17,7 +17,7 @@ from .api.dashboard_service import (
     get_unidades_dashboard,
 )
 from .database import Base, SessionLocal, engine, get_db
-from .schemas import LastUpdateResponse, UnidadeStatusPatchRequest, UnidadeStatusResponse
+from .schemas import LastUpdateResponse, UnidadeStatusListResponse, UnidadeStatusPatchRequest, UnidadeStatusResponse
 from .services.dropbox_service import init_dropbox
 from .sync_job import run_sync_loop
 from .services.unidade_status_service import list_unidades_status, seed_unidade_status, update_unidade_status_manual
@@ -122,7 +122,7 @@ def dashboard_options(db: Session = Depends(get_db)):
     return get_filter_options(db)
 
 
-@app.get("/unidades/status", response_model=list[UnidadeStatusResponse])
+@app.get("/unidades/status", response_model=UnidadeStatusListResponse)
 def unidades_status(db: Session = Depends(get_db)):
     return list_unidades_status(db)
 
