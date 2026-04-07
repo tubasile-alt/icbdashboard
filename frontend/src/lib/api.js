@@ -25,6 +25,9 @@ export const getDashboardBundle = async (filters = {}) => {
     api.get('/unidades/status'),
   ]);
 
+  const alertasPayload = alertas.data;
+  const alertasLegacy = Array.isArray(alertasPayload) ? alertasPayload : (alertasPayload?.alertas || []);
+
   return {
     lastUpdate: last.data,
     summary: summary.data,
@@ -32,7 +35,8 @@ export const getDashboardBundle = async (filters = {}) => {
     profissionais: profissionais.data,
     financeiro: financeiro.data,
     fiscal: fiscal.data,
-    alertas: alertas.data,
+    alertas: alertasLegacy,
+    alertasStructured: Array.isArray(alertasPayload) ? null : alertasPayload,
     unidadesStatus: unidadesStatus.data,
   };
 };
