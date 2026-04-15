@@ -19,11 +19,11 @@ try:
     from reportlab.lib.units import cm
     from reportlab.platypus import HRFlowable, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+    W, _ = A4
     REPORTLAB_OK = True
 except ImportError:
+    W = 595.0
     REPORTLAB_OK = False
-
-W, _ = A4
 
 NAVY2 = None
 NAVY3 = None
@@ -115,88 +115,96 @@ def mini_bar(v, mx, cor=None, w=55, h=5):
 
 
 def _query_dados(db: Session, periodo: str) -> dict:
+    # fact_financeiro_mensal: receita_bruta, impostos, receita_liquida, custos, despesas,
+    #                         ebitda, margem_ebitda, lucro_liquido, margem_liquida
+    # fact_unidade_mensal: receita_operacional (not receita)
+    # fact_producao_profissional_mensal: consultas_totais (not consultas)
+
     if periodo == 'mes':
-        filtro_meses = """
+        filtro_fin = """
             WHERE competencia = (
-                SELECT MAX(competencia) FROM fact_financeiro
+                SELECT MAX(competencia) FROM fact_financeiro_mensal
                 WHERE receita_bruta > 0
             )
         """
         filtro_unidade = """
             WHERE (ano * 100 + mes) = (
                 SELECT MAX(ano * 100 + mes) FROM fact_unidade_mensal
-                WHERE receita > 0
+                WHERE receita_operacional > 0
             )
         """
         n_meses = 1
     else:
-        filtro_meses = """
+        filtro_fin = """
             WHERE competencia IN (
-                SELECT DISTINCT competencia FROM fact_financeiro
-                WHERE receita_bruta > 0
-                ORDER BY competencia DESC LIMIT 3
+                SELECT competencia FROM (
+                    SELECT DISTINCT competencia FROM fact_financeiro_mensal
+                    WHERE receita_bruta > 0
+                    ORDER BY competencia DESC LIMIT 3
+                ) AS _sub_fin
             )
         """
         filtro_unidade = """
             WHERE (ano * 100 + mes) IN (
-                SELECT DISTINCT (ano * 100 + mes) FROM fact_unidade_mensal
-                WHERE receita > 0
-                ORDER BY (ano * 100 + mes) DESC LIMIT 3
+                SELECT ym FROM (
+                    SELECT DISTINCT (ano * 100 + mes) AS ym FROM fact_unidade_mensal
+                    WHERE receita_operacional > 0
+                    ORDER BY ym DESC LIMIT 3
+                ) AS _sub_um
             )
         """
         n_meses = 3
 
     ytd_row = db.execute(text(f"""
         SELECT
-            COALESCE(SUM(receita_bruta), 0) AS receita_bruta,
-            COALESCE(SUM(receita_liquida), 0) AS receita_liquida,
-            COALESCE(SUM(ebitda), 0) AS ebitda,
-            COALESCE(SUM(ll), 0) AS ll,
-            COALESCE(SUM(iss_pis_cofins), 0) AS iss_pis_cofins,
-            COALESCE(SUM(devolucoes), 0) AS devolucoes,
-            COALESCE(SUM(custos_despesas), 0) AS custos_despesas,
-            COALESCE(SUM(irpj_csll), 0) AS irpj_csll
-        FROM fact_financeiro
-        {filtro_meses}
+            COALESCE(SUM(receita_bruta), 0)    AS receita_bruta,
+            COALESCE(SUM(receita_liquida), 0)  AS receita_liquida,
+            COALESCE(SUM(ebitda), 0)           AS ebitda,
+            COALESCE(SUM(lucro_liquido), 0)    AS lucro_liquido,
+            COALESCE(SUM(impostos), 0)         AS impostos,
+            COALESCE(SUM(custos + despesas), 0) AS custos_despesas
+        FROM fact_financeiro_mensal
+        {filtro_fin}
     """)).fetchone()
 
-    rb = float(ytd_row.receita_bruta or 0)
-    rl = float(ytd_row.receita_liquida or rb)
+    rb  = float(ytd_row.receita_bruta or 0)
+    rl  = float(ytd_row.receita_liquida or rb)
     ebt = float(ytd_row.ebitda or 0)
-    ll = float(ytd_row.ll or 0)
+    ll  = float(ytd_row.lucro_liquido or 0)
 
     ytd = {
-        'receita_bruta': rb,
-        'iss_pis_cofins': float(ytd_row.iss_pis_cofins or 0),
-        'devolucoes': float(ytd_row.devolucoes or 0),
+        'receita_bruta':   rb,
+        'iss_pis_cofins':  float(ytd_row.impostos or 0),
+        'devolucoes':      0.0,
         'receita_liquida': rl,
         'custos_despesas': float(ytd_row.custos_despesas or 0),
-        'ebitda': ebt,
-        'margem_ebitda': round(ebt / rl, 4) if rl else None,
-        'irpj_csll': float(ytd_row.irpj_csll or 0),
-        'll': ll,
-        'margem_ll': round(ll / rl, 4) if rl else None,
+        'ebitda':          ebt,
+        'margem_ebitda':   round(ebt / rl, 4) if rl else None,
+        'irpj_csll':       0.0,
+        'll':              ll,
+        'margem_ll':       round(ll / rl, 4) if rl else None,
     }
 
     try:
         yoy_row = db.execute(
-            text(
-                """
-                SELECT COALESCE(SUM(receita), 0) AS receita_anterior
+            text("""
+                SELECT COALESCE(SUM(receita_operacional), 0) AS receita_anterior
                 FROM fact_unidade_mensal
                 WHERE (ano * 100 + mes) IN (
-                    SELECT DISTINCT ((ano - 1) * 100 + mes)
-                    FROM fact_unidade_mensal
-                    WHERE receita > 0
-                    ORDER BY (ano * 100 + mes) DESC LIMIT :n
+                    SELECT ym_ant FROM (
+                        SELECT DISTINCT ((ano - 1) * 100 + mes) AS ym_ant
+                        FROM fact_unidade_mensal
+                        WHERE receita_operacional > 0
+                        ORDER BY (ano * 100 + mes) DESC LIMIT :n
+                    ) AS _sub_yoy
                 )
-                """
-            ),
+            """),
             {'n': n_meses},
         ).fetchone()
         rb_anterior = float(yoy_row.receita_anterior or 0)
         yoy = round(rb / rb_anterior - 1, 4) if rb_anterior else 0
     except Exception:
+        db.rollback()
         yoy = 0
 
     meses_rows = db.execute(text(f"""
@@ -204,100 +212,97 @@ def _query_dados(db: Session, periodo: str) -> dict:
             competencia,
             receita_bruta,
             ebitda,
-            ll,
-            CASE WHEN receita_liquida > 0 THEN ebitda / receita_liquida ELSE NULL END AS margem_ebitda,
-            CASE WHEN receita_liquida > 0 THEN ll / receita_liquida ELSE NULL END AS margem_ll
-        FROM fact_financeiro
-        {filtro_meses}
+            lucro_liquido                                               AS ll,
+            CASE WHEN receita_liquida > 0 THEN ebitda / receita_liquida      ELSE NULL END AS margem_ebitda,
+            CASE WHEN receita_liquida > 0 THEN lucro_liquido / receita_liquida ELSE NULL END AS margem_ll
+        FROM fact_financeiro_mensal
+        {filtro_fin}
         ORDER BY competencia ASC
     """)).fetchall()
 
-    meses_label = {1: 'JAN', 2: 'FEV', 3: 'MAR', 4: 'ABR', 5: 'MAI', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SET', 10: 'OUT', 11: 'NOV', 12: 'DEZ'}
+    meses_label = {1:'JAN',2:'FEV',3:'MAR',4:'ABR',5:'MAI',6:'JUN',
+                   7:'JUL',8:'AGO',9:'SET',10:'OUT',11:'NOV',12:'DEZ'}
     meses = []
     for r in meses_rows:
         comp = str(r.competencia)
-        mes_num = int(comp[-2:]) if len(comp) >= 6 else 0
-        meses.append(
-            {
-                'mes_label': meses_label.get(mes_num, comp),
-                'receita_bruta': float(r.receita_bruta or 0),
-                'ebitda': float(r.ebitda or 0),
-                'll': float(r.ll or 0),
-                'margem_ebitda': float(r.margem_ebitda) if r.margem_ebitda else None,
-                'margem_ll': float(r.margem_ll) if r.margem_ll else None,
-            }
-        )
+        parts = comp.split('-')
+        mes_num = int(parts[1]) if len(parts) == 2 else 0
+        meses.append({
+            'mes_label':    meses_label.get(mes_num, comp),
+            'receita_bruta': float(r.receita_bruta or 0),
+            'ebitda':        float(r.ebitda or 0),
+            'll':            float(r.ll or 0),
+            'margem_ebitda': float(r.margem_ebitda) if r.margem_ebitda is not None else None,
+            'margem_ll':     float(r.margem_ll)     if r.margem_ll     is not None else None,
+        })
 
+    # Unidades: usar fact_financeiro_mensal agrupado por unidade para margens
     try:
         unidades_rows = db.execute(text(f"""
             SELECT
                 um.unidade,
-                COALESCE(SUM(um.receita), 0) AS receita_bruta,
-                COALESCE(AVG(f_unit.ebitda_unit), 0) AS ebitda,
-                COALESCE(AVG(f_unit.ll_unit), 0) AS ll,
-                COALESCE(AVG(f_unit.margem_ebitda_unit), NULL) AS margem_ebitda,
-                COALESCE(AVG(f_unit.margem_ll_unit), NULL) AS margem_ll
+                COALESCE(SUM(um.receita_operacional), 0) AS receita_bruta,
+                SUM(fm.ebitda)                            AS ebitda,
+                SUM(fm.lucro_liquido)                     AS ll,
+                CASE WHEN SUM(fm.receita_liquida) > 0
+                     THEN SUM(fm.ebitda) / SUM(fm.receita_liquida) END AS margem_ebitda,
+                CASE WHEN SUM(fm.receita_liquida) > 0
+                     THEN SUM(fm.lucro_liquido) / SUM(fm.receita_liquida) END AS margem_ll
             FROM fact_unidade_mensal um
-            LEFT JOIN (
-                SELECT
-                    unidade,
-                    ebitda AS ebitda_unit,
-                    ll AS ll_unit,
-                    margem_ebitda AS margem_ebitda_unit,
-                    margem_ll AS margem_ll_unit
-                FROM fact_financeiro_unidade
-                {filtro_meses}
-            ) f_unit ON f_unit.unidade = um.unidade
+            LEFT JOIN fact_financeiro_mensal fm
+                ON fm.unidade = um.unidade
+                AND (fm.ano * 100 + fm.mes) = (um.ano * 100 + um.mes)
             {filtro_unidade}
             GROUP BY um.unidade
-            ORDER BY COALESCE(AVG(f_unit.ll_unit), 0) DESC
+            ORDER BY SUM(fm.lucro_liquido) DESC NULLS LAST
         """)).fetchall()
     except Exception:
+        db.rollback()
         unidades_rows = []
 
     if not unidades_rows:
-        unidades_rows = db.execute(text(f"""
-            SELECT
-                unidade,
-                COALESCE(SUM(receita), 0) AS receita_bruta,
-                NULL AS ebitda,
-                NULL AS ll,
-                NULL AS margem_ebitda,
-                NULL AS margem_ll
-            FROM fact_unidade_mensal
-            {filtro_unidade}
-            GROUP BY unidade
-            ORDER BY SUM(receita) DESC
-        """)).fetchall()
+        try:
+            unidades_rows = db.execute(text(f"""
+                SELECT
+                    unidade,
+                    COALESCE(SUM(receita_operacional), 0) AS receita_bruta,
+                    NULL AS ebitda,
+                    NULL AS ll,
+                    NULL AS margem_ebitda,
+                    NULL AS margem_ll
+                FROM fact_unidade_mensal
+                {filtro_unidade}
+                GROUP BY unidade
+                ORDER BY SUM(receita_operacional) DESC
+            """)).fetchall()
+        except Exception:
+            db.rollback()
+            unidades_rows = []
 
     por_unidade = []
     for r in unidades_rows:
-        por_unidade.append(
-            {
-                'UNIDADE': r.unidade,
-                'receita_bruta': float(r.receita_bruta or 0),
-                'ebitda': float(r.ebitda) if r.ebitda is not None else None,
-                'll': float(r.ll) if r.ll is not None else None,
-                'margem_ebitda': float(r.margem_ebitda) if r.margem_ebitda is not None else None,
-                'margem_ll': float(r.margem_ll) if r.margem_ll is not None else None,
-            }
-        )
+        por_unidade.append({
+            'UNIDADE':      r.unidade,
+            'receita_bruta': float(r.receita_bruta or 0),
+            'ebitda':        float(r.ebitda)        if r.ebitda        is not None else None,
+            'll':            float(r.ll)             if r.ll            is not None else None,
+            'margem_ebitda': float(r.margem_ebitda) if r.margem_ebitda is not None else None,
+            'margem_ll':     float(r.margem_ll)     if r.margem_ll     is not None else None,
+        })
 
     alertas = _build_alertas(db, ytd, yoy, por_unidade)
 
-    conv_row = db.execute(
-        text(
-            """
+    try:
+        conv_row = db.execute(text("""
             SELECT
-                COALESCE(SUM(cirurgias), 0) AS total_cir,
-                COALESCE(SUM(consultas), 0) AS total_con
-            FROM fact_producao_profissional
-            WHERE ano = (SELECT MAX(ano) FROM fact_producao_profissional)
-            """
-        )
-    ).fetchone()
-
-    conv_media = float(conv_row.total_cir) / float(conv_row.total_con) if conv_row and conv_row.total_con else 0.47
+                COALESCE(SUM(cirurgias), 0)       AS total_cir,
+                COALESCE(SUM(consultas_totais), 0) AS total_con
+            FROM fact_producao_profissional_mensal
+            WHERE ano = (SELECT MAX(ano) FROM fact_producao_profissional_mensal)
+        """)).fetchone()
+        conv_media = float(conv_row.total_cir) / float(conv_row.total_con) if conv_row and conv_row.total_con else 0.47
+    except Exception:
+        conv_media = 0.47
 
     return {
         'ytd': ytd,
@@ -348,18 +353,22 @@ def _build_alertas(db, ytd, yoy, por_unidade):
         )
 
     try:
-        nf_row = db.execute(text('SELECT pct_nf FROM fact_financeiro ORDER BY competencia DESC LIMIT 1')).fetchone()
-        if nf_row and nf_row.pct_nf and float(nf_row.pct_nf) < 0.65:
+        nf_row = db.execute(text(
+            "SELECT percentual_nf FROM fact_fiscal_mensal "
+            "WHERE unidade_ref = '__CONSOLIDADO__' ORDER BY competencia DESC LIMIT 1"
+        )).fetchone()
+        if nf_row and nf_row.percentual_nf and float(nf_row.percentual_nf) < 0.65:
             alertas.append(
                 {
                     'nivel': 'atencao',
                     'categoria': 'fiscal',
-                    'titulo': f"% NF emitida abaixo do threshold: {Pct(float(nf_row.pct_nf))} (mín. 65%)",
+                    'titulo': f"% NF emitida abaixo do threshold: {Pct(float(nf_row.percentual_nf))} (mín. 65%)",
                     'detalhe': 'Risco de exposição fiscal. Acionar financeiro para regularização.',
                     'unidades': [],
                 }
             )
     except Exception:
+        db.rollback()
         pass
 
     return alertas
