@@ -17,6 +17,7 @@ from .api.dashboard_service import (
     get_unidades_dashboard,
 )
 from .database import Base, SessionLocal, engine, get_db
+from .report_service import router as report_router
 from .schemas import LastUpdateResponse, UnidadeStatusListResponse, UnidadeStatusPatchRequest, UnidadeStatusResponse
 from .services.dropbox_service import init_dropbox
 from .sync_job import run_sync_loop
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title=settings.app_name)
+app.include_router(report_router)
 
 app.add_middleware(
     CORSMiddleware,

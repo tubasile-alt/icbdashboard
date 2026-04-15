@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Funnel, FunnelChart, Line, LineChart, Res
 import KpiCard from './components/KpiCard';
 import UpdateBadge from './components/UpdateBadge';
 import FinancialDreCard from './components/FinancialDreCard';
+import ReportButton from './components/ReportButton';
 import StatusUnidadesPanel from './components/StatusUnidadesPanel';
 import { getDashboardBundle, getFilterOptions } from './lib/api';
 
@@ -250,7 +251,10 @@ export default function App() {
           </div>
         </div>
 
-        <UpdateBadge status={payload?.lastUpdate?.status} lastUpdate={payload?.lastUpdate?.last_update} />
+        <div className="flex flex-col items-end gap-3">
+          <UpdateBadge status={payload?.lastUpdate?.status} lastUpdate={payload?.lastUpdate?.last_update} />
+          <ReportButton />
+        </div>
       </header>
 
       {error && (
