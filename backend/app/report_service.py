@@ -801,15 +801,23 @@ def _build_executive_data(db, periodo: str = 'trimestre') -> dict:
     # ALERTA 1 — PREJUÍZO (financeiro, consolidado em um único item)
     if negativas:
         impacto_total = sum(n['ll'] for n in negativas)
-        nomes_curtos = ', '.join(n['unidade'] for n in negativas[:4])
-        if len(negativas) > 4:
-            nomes_curtos += f' +{len(negativas)-4}'
+        # short codes: first 3 letters or city-known abbr
+        ABBR = {'Rio de Janeiro': 'RJ', 'São Paulo': 'SP', 'Belo Horizonte': 'BH',
+                'Porto Alegre': 'POA', 'Brasília': 'BSB', 'Florianópolis': 'FLN',
+                'Fortaleza': 'FOR', 'Salvador': 'SSA', 'Recife': 'REC',
+                'Curitiba': 'CWB', 'Manaus': 'MAO', 'Goiânia': 'GYN',
+                'Cuiabá': 'CGB', 'Santos': 'SAN'}
+        codes = [ABBR.get(n['unidade'], n['unidade'][:3].upper()) for n in negativas[:3]]
+        codes_str = ', '.join(codes)
+        if len(negativas) > 3:
+            codes_str += f' +{len(negativas) - 3}'
+        impacto_k = abs(impacto_total) / 1000
         alertas_items.append({
             'alert_id': 'prejuizo_consolidado',
             'categoria': 'prejuizo',
             'nivel': 'critico',
-            'titulo': f'{len(negativas)} unidade(s) com Lucro Líquido negativo',
-            'detalhe': f'Impacto: R$ {impacto_total:,.0f} · {nomes_curtos}'.replace(',', '.'),
+            'titulo': f'PREJUÍZOS: {codes_str}',
+            'detalhe': f'Impacto: -R$ {impacto_k:,.0f}k no período'.replace(',', '.'),
             'unidades': [n['unidade'] for n in negativas],
             'impacto': impacto_total,
         })
@@ -834,13 +842,13 @@ def _build_executive_data(db, periodo: str = 'trimestre') -> dict:
             ORDER BY conv ASC NULLS LAST LIMIT 1
         """)).fetchone()
         if conv_atual is not None and conv_atual < 0.40:
-            det_pior = f' · Pior: {pior_conv.unidade} ({pior_conv.conv*100:.1f}%)' if pior_conv and pior_conv.conv is not None else ''
+            pior_txt = f'Pior: {pior_conv.unidade} ({pior_conv.conv*100:.1f}%)' if pior_conv and pior_conv.conv is not None else ''
             alertas_items.append({
                 'alert_id': 'conv_baixa',
                 'categoria': 'operacional',
                 'nivel': 'atencao',
-                'titulo': f'Conversão da rede abaixo do esperado: {conv_atual*100:.1f}%',
-                'detalhe': f'Meta de referência ≥ 40%. Projeção pode comprometer pipeline de cirurgias.{det_pior}',
+                'titulo': f'CONVERSÃO ABAIXO: {conv_atual*100:.1f}%',
+                'detalhe': f'Meta ≥ 40%. {pior_txt}',
                 'unidades': [pior_conv.unidade] if pior_conv else [],
                 'impacto': None,
             })
