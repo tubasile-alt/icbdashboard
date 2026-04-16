@@ -48,6 +48,7 @@ function AlertLevel({ nivel }) {
 export default function ExecutiveReportPage() {
   const queryString = typeof window !== 'undefined' ? window.location.search : '';
   const isExportMode = useMemo(() => new URLSearchParams(queryString).get('export') === 'true', [queryString]);
+  const [periodo, setPeriodo] = useState(new URLSearchParams(queryString).get('periodo') || 'trimestre');
   const exportFilters = useMemo(() => {
     const search = new URLSearchParams(queryString);
     return exportFilterKeys.reduce((acc, key) => ({ ...acc, [key]: search.getAll(key) }), {});
@@ -60,7 +61,7 @@ export default function ExecutiveReportPage() {
   const handleDownloadPdf = useCallback(async () => {
     setPdfStatus('loading');
     try {
-      const res = await fetch(`${API_URL}/dashboard/relatorio-executivo-pdf`);
+      const res = await fetch(`${API_URL}/dashboard/relatorio-executivo-pdf?periodo=${encodeURIComponent(periodo)}`);
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -77,7 +78,7 @@ export default function ExecutiveReportPage() {
       setPdfStatus('error');
       setTimeout(() => setPdfStatus('idle'), 4000);
     }
-  }, []);
+  }, [periodo]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -86,7 +87,7 @@ export default function ExecutiveReportPage() {
       setLoading(true);
       setError('');
       try {
-        const payload = await getExecutiveReport(exportFilters);
+        const payload = await getExecutiveReport({ ...exportFilters, periodo });
         if (active) setData(payload);
       } catch {
         if (active) setError('Falha ao carregar relatório executivo.');
@@ -101,7 +102,7 @@ export default function ExecutiveReportPage() {
       active = false;
       if (id) clearInterval(id);
     };
-  }, [exportFilters, isExportMode]);
+  }, [exportFilters, isExportMode, periodo]);
 
   const status = statusConfig[data?.header?.status] || statusConfig.desatualizado;
 
@@ -129,6 +130,17 @@ export default function ExecutiveReportPage() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">ICB · Executive Finance Control</p>
               <h1 className="mt-2 text-3xl font-semibold">{data?.header?.title || 'Painel Executivo'}</h1>
               <p className="mt-1 text-sm text-slate-400">{data?.header?.subtitle || 'Uso interno · Confidencial'}</p>
+              <div className="mt-3 flex items-center gap-3">
+                <label className="text-xs text-slate-400">Filtro:</label>
+                <select
+                  value={periodo}
+                  onChange={(e) => setPeriodo(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-xs text-slate-100 outline-none"
+                >
+                  <option value="mes">Mês</option>
+                  <option value="trimestre">Trimestre</option>
+                </select>
+              </div>
               <p className="mt-2 text-xs text-slate-500">Período de referência: {data?.header?.periodo_referencia || 'n/d'}</p>
             </div>
 
