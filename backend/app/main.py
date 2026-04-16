@@ -25,7 +25,6 @@ from .schemas import LastUpdateResponse, UnidadeStatusListResponse, UnidadeStatu
 from .services.dropbox_service import init_dropbox
 from .sync_job import run_sync_loop
 from .services.unidade_status_service import list_unidades_status, seed_unidade_status, update_unidade_status_manual
-from .services.pdf_export_service import generate_executive_report_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +134,15 @@ def dashboard_executive_report(filters: dict = Depends(_filters), db: Session = 
 
 @app.get("/export/executive-report-pdf")
 async def export_executive_report_pdf(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
+    try:
+        from .services.pdf_export_service import generate_executive_report_pdf as _gen_pdf
+    except ImportError as exc:
+        raise HTTPException(status_code=501, detail="Exportação PDF via headless browser não disponível neste ambiente. Use /dashboard/relatorio para o PDF executivo.") from exc
+
     last_update = get_last_update_status(db, settings.stale_threshold_hours)
     status_dados = "dados confiáveis" if last_update.status == "ok" else "atenção"
     try:
-        pdf_bytes = await generate_executive_report_pdf(
+        pdf_bytes = await _gen_pdf(
             frontend_base_url=settings.frontend_base_url,
             filters=filters,
             status_dados=status_dados,
