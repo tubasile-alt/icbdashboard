@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "GDZ2ktm5HJobfCiTkTpFO"
+uri = "file://attached_assets/exports/ICB_Painel_Executivo.pdf"
+type = "pdf"
+title = "Painel Executivo ICB — Trimestre 2026-Q1"

@@ -1,0 +1,184 @@
+🔷 1. RESUMO EXECUTIVO
+
+🎯 Função:
+
+Dar uma visão imediata da performance global da empresa.
+
+📦 Conteúdo:
+
+* Receita Bruta
+    * Indicador do volume total gerado no período
+    * Inclui variação comparativa com período anterior relevante
+* EBITDA
+    * Indicador de eficiência operacional
+    * Inclui variação de tendência recente
+* Lucro Líquido
+    * Resultado final após todos os custos
+    * Inclui variação estrutural
+* Saúde da Rede
+    * Quantidade de unidades classificadas em:
+        * Saudáveis
+        * Em atenção
+        * Em risco
+        * Encerradas
+* Status dos Dados
+    * Horário da última atualização
+    * Indicador visual de confiabilidade dos dados
+
+⸻
+
+🔶 2. ALERTAS E AÇÕES
+
+🎯 Função:
+
+Apontar problemas críticos e decisões necessárias.
+
+📦 Conteúdo:
+
+* Alertas de Prejuízo
+    * Lista de unidades com resultado negativo
+    * Indicação de impacto financeiro consolidado
+* Alertas Operacionais (ex: conversão)
+    * Identificação de queda de performance
+    * Projeção de impacto futuro
+* Alertas Fiscais
+    * Indicadores de risco tributário
+    * Nível de exposição financeira
+* Unidades para Avaliação Estratégica
+    * Lista de unidades que podem demandar:
+        * reestruturação
+        * intervenção
+        * possível encerramento
+
+⸻
+
+📊 3. DRE CONSOLIDADA
+
+🎯 Função:
+
+Mostrar a estrutura financeira do resultado.
+
+📦 Conteúdo:
+
+Linhas principais:
+
+* Receita Líquida
+* Custos e Despesas
+* EBITDA
+* Lucro Líquido
+
+Para cada linha:
+
+* Valor consolidado do período
+* Comparação com:
+    * período anterior
+    * mesmo período do ano anterior
+
+⸻
+
+🏆 4. RANKING DE UNIDADES
+
+🎯 Função:
+
+Identificar quem gera valor e quem destrói valor.
+
+📦 Conteúdo:
+
+* Top Unidades
+    * Unidades com melhor performance financeira
+    * Indicador de crescimento ou evolução
+* Bottom Unidades
+    * Unidades com pior performance
+    * Indicador de deterioração
+
+⸻
+
+💰 5. PIPELINE FINANCEIRO
+
+🎯 Função:
+
+Mostrar receita futura potencial.
+
+📦 Conteúdo:
+
+* Volume de leads ativos
+* Quantidade de procedimentos já encaminhados/agendados
+* Estimativa de receita futura com base no pipeline
+
+⸻
+
+⚙️ 6. INDICADORES OPERACIONAIS
+
+🎯 Função:
+
+Avaliar eficiência da operação.
+
+📦 Conteúdo:
+
+* Taxa de Conversão
+    * Média da rede
+    * Destaque para unidade com pior desempenho
+* Ticket Médio
+    * Média da rede
+    * Destaque para unidade abaixo do esperado
+
+⸻
+
+⚠️ 7. QUALIDADE DE DADOS
+
+🎯 Função:
+
+Garantir confiabilidade do relatório.
+
+📦 Conteúdo:
+
+* Alertas sobre inconsistências ou lacunas
+    * Dados não lançados
+    * Períodos incompletos
+    * Informações faltantes
+
+⸻
+
+🧠 LEITURA ESTRATÉGICA DO DOCUMENTO
+
+Esse relatório é estruturado para responder:
+
+1. Performance geral
+
+→ Resumo Executivo
+
+2. Problemas críticos
+
+→ Alertas e Ações
+
+3. Estrutura financeira
+
+→ DRE Consolidada
+
+4. Distribuição de valor na rede
+
+→ Ranking de Unidades
+
+5. Receita futura
+
+→ Pipeline
+
+6. Eficiência operacional
+
+→ Indicadores
+
+7. Confiabilidade dos dados
+
+→ Qualidade de Dados
+
+⸻
+
+🔥 DEFINIÇÃO FINAL
+
+👉 Esse documento é:
+
+* um relatório executivo trimestral
+* focado em decisão
+* com leitura em menos de 2 minutos
+* sem profundidade operacional
+* com foco em ação imediata

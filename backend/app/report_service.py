@@ -781,21 +781,15 @@ def _build_executive_data(db, periodo: str = 'trimestre') -> dict:
 
     alertas_items = []
     avaliacao_fechamento = []
-    for i, r in enumerate(unit_fin):
+    negativas = []
+    for r in unit_fin:
         ll_u  = _safe(r.ll)  or 0
         rb_u  = _safe(r.rb)  or 0
         ebt_u = _safe(r.ebt) or 0
         rl_u  = _safe(r.rl)  or 0
         mg_ll = (ll_u / rl_u) if rl_u and rl_u > 1000 else None
         if ll_u < 0:
-            alertas_items.append({
-                'alert_id': f'neg_ll_{i}',
-                'nivel': 'critico',
-                'titulo': f'{r.unidade} — Lucro Líquido negativo',
-                'detalhe': f'LL: R$ {ll_u:,.0f} · Margem: {mg_ll*100:.1f}%' if mg_ll else f'LL: R$ {ll_u:,.0f}',
-                'unidades': [r.unidade],
-                'impacto': None,
-            })
+            negativas.append({'unidade': r.unidade, 'll': ll_u, 'mg_ll': mg_ll, 'rb': rb_u, 'ebitda': ebt_u})
             avaliacao_fechamento.append({
                 'unidade': r.unidade,
                 'motivo': 'Lucro Líquido negativo no período',
@@ -804,7 +798,56 @@ def _build_executive_data(db, periodo: str = 'trimestre') -> dict:
                 'receita_bruta': rb_u,
             })
 
-    # NF alert
+    # ALERTA 1 — PREJUÍZO (financeiro, consolidado em um único item)
+    if negativas:
+        impacto_total = sum(n['ll'] for n in negativas)
+        nomes_curtos = ', '.join(n['unidade'] for n in negativas[:4])
+        if len(negativas) > 4:
+            nomes_curtos += f' +{len(negativas)-4}'
+        alertas_items.append({
+            'alert_id': 'prejuizo_consolidado',
+            'categoria': 'prejuizo',
+            'nivel': 'critico',
+            'titulo': f'{len(negativas)} unidade(s) com Lucro Líquido negativo',
+            'detalhe': f'Impacto: R$ {impacto_total:,.0f} · {nomes_curtos}'.replace(',', '.'),
+            'unidades': [n['unidade'] for n in negativas],
+            'impacto': impacto_total,
+        })
+
+    # ALERTA 2 — OPERACIONAL (queda de conversão)
+    try:
+        conv_row = db.execute(text("""
+            SELECT
+                COALESCE(SUM(cirurgias),0)         AS cir,
+                COALESCE(SUM(consultas_totais),0)  AS con
+            FROM fact_producao_profissional_mensal
+            WHERE ano = (SELECT MAX(ano) FROM fact_producao_profissional_mensal)
+        """)).fetchone()
+        conv_atual = (float(conv_row.cir) / float(conv_row.con)) if conv_row and conv_row.con else None
+        pior_conv = db.execute(text("""
+            SELECT unidade,
+                   SUM(cirurgias)::float / NULLIF(SUM(consultas_totais),0) AS conv
+            FROM fact_producao_profissional_mensal
+            WHERE ano = (SELECT MAX(ano) FROM fact_producao_profissional_mensal)
+            GROUP BY unidade
+            HAVING SUM(consultas_totais) > 50
+            ORDER BY conv ASC NULLS LAST LIMIT 1
+        """)).fetchone()
+        if conv_atual is not None and conv_atual < 0.40:
+            det_pior = f' · Pior: {pior_conv.unidade} ({pior_conv.conv*100:.1f}%)' if pior_conv and pior_conv.conv is not None else ''
+            alertas_items.append({
+                'alert_id': 'conv_baixa',
+                'categoria': 'operacional',
+                'nivel': 'atencao',
+                'titulo': f'Conversão da rede abaixo do esperado: {conv_atual*100:.1f}%',
+                'detalhe': f'Meta de referência ≥ 40%. Projeção pode comprometer pipeline de cirurgias.{det_pior}',
+                'unidades': [pior_conv.unidade] if pior_conv else [],
+                'impacto': None,
+            })
+    except Exception:
+        db.rollback()
+
+    # ALERTA 3 — FISCAL (% NF abaixo do threshold)
     try:
         nf = db.execute(text("""
             SELECT percentual_nf FROM fact_fiscal_mensal
@@ -814,9 +857,10 @@ def _build_executive_data(db, periodo: str = 'trimestre') -> dict:
         if nf and _safe(nf.percentual_nf) is not None and float(nf.percentual_nf) < 0.65:
             alertas_items.append({
                 'alert_id': 'nf_baixa',
+                'categoria': 'fiscal',
                 'nivel': 'atencao',
                 'titulo': f'% NF emitida abaixo de 65%: {float(nf.percentual_nf)*100:.1f}%',
-                'detalhe': 'Risco de exposição fiscal. Acionar financeiro.',
+                'detalhe': 'Risco de exposição fiscal. Acionar financeiro para regularização.',
                 'unidades': [],
                 'impacto': None,
             })
