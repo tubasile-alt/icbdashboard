@@ -4,6 +4,7 @@ import { getExecutiveReport } from '../lib/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pct = (value) => (typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : 'n/d');
+const asMoney = (value) => (typeof value === 'number' ? money.format(value) : 'n/d');
 
 const statusConfig = {
   atualizado: {
@@ -84,7 +85,7 @@ export default function ExecutiveReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slateDeep px-4 py-6 text-slate-100 md:px-7 md:py-8">
+    <div className="min-h-screen bg-slateDeep bg-[radial-gradient(circle_at_top,rgba(30,64,175,0.15),transparent_45%)] px-4 py-6 text-slate-100 md:px-7 md:py-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className={`${card} p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -92,6 +93,7 @@ export default function ExecutiveReportPage() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">ICB · Executive Finance Control</p>
               <h1 className="mt-2 text-3xl font-semibold">{data?.header?.title || 'Painel Executivo'}</h1>
               <p className="mt-1 text-sm text-slate-400">{data?.header?.subtitle || 'Uso interno · Confidencial'}</p>
+              <p className="mt-2 text-xs text-slate-500">Período de referência: {data?.header?.periodo_referencia || 'n/d'}</p>
             </div>
 
             <div className="text-right">
@@ -153,11 +155,17 @@ export default function ExecutiveReportPage() {
                     <AlertLevel nivel={alerta.nivel} />
                   </div>
                   <p className="text-xs text-slate-300">{alerta.detalhe}</p>
+                  {alerta?.impacto && <p className="mt-1 text-xs text-slate-400">Impacto estimado: {alerta.impacto}</p>}
                   {Array.isArray(alerta.unidades) && alerta.unidades.length > 0 && (
                     <p className="mt-1 text-xs text-slate-400">Unidades afetadas: {alerta.unidades.join(', ')}</p>
                   )}
                 </div>
               ))}
+              {(data?.alertas?.items || []).length === 0 && (
+                <div className="rounded-xl border border-slate-700/70 bg-slate-950/50 p-4 text-sm text-slate-400">
+                  Sem alertas ativos no período.
+                </div>
+              )}
             </div>
           </article>
 
@@ -168,7 +176,7 @@ export default function ExecutiveReportPage() {
                 <div key={item.unidade} className="rounded-xl border border-slate-700/70 bg-slate-950/50 p-3 text-sm">
                   <p className="font-semibold text-slate-100">{item.unidade}</p>
                   <p className="text-xs text-slate-300">{item.motivo}</p>
-                  <p className="mt-1 text-xs text-slate-400">Status: {item.status} · EBITDA: {typeof item.ebitda === 'number' ? money.format(item.ebitda) : 'n/d'}</p>
+                  <p className="mt-1 text-xs text-slate-400">Status: {item.status} · EBITDA: {asMoney(item.ebitda)} · Receita Bruta: {asMoney(item.receita_bruta)}</p>
                 </div>
               ))}
               {(data?.alertas?.avaliacao_fechamento || []).length === 0 && <p className="text-sm text-slate-400">Nenhuma unidade sinalizada.</p>}
@@ -209,9 +217,10 @@ export default function ExecutiveReportPage() {
               {(data?.ranking?.top_5 || []).map((item, i) => (
                 <div key={`${item.unidade}-top`} className="flex items-center justify-between rounded-lg bg-slate-950/40 px-3 py-2 text-sm">
                   <p>{i + 1}. {item.unidade}</p>
-                  <p className="font-semibold">{money.format(item.valor)} <span className="text-xs text-slate-400">({item.metrica})</span></p>
+                  <p className="font-semibold">{asMoney(item.valor)} <span className="text-xs text-slate-400">({item.metrica})</span></p>
                 </div>
               ))}
+              {(data?.ranking?.top_5 || []).length === 0 && <p className="text-sm text-slate-400">n/d</p>}
             </div>
           </article>
 
@@ -221,9 +230,10 @@ export default function ExecutiveReportPage() {
               {(data?.ranking?.bottom_5 || []).map((item, i) => (
                 <div key={`${item.unidade}-bottom`} className="flex items-center justify-between rounded-lg bg-slate-950/40 px-3 py-2 text-sm">
                   <p>{i + 1}. {item.unidade}</p>
-                  <p className="font-semibold">{money.format(item.valor)} <span className="text-xs text-slate-400">({item.metrica})</span></p>
+                  <p className="font-semibold">{asMoney(item.valor)} <span className="text-xs text-slate-400">({item.metrica})</span></p>
                 </div>
               ))}
+              {(data?.ranking?.bottom_5 || []).length === 0 && <p className="text-sm text-slate-400">n/d</p>}
             </div>
           </article>
         </section>
@@ -234,7 +244,7 @@ export default function ExecutiveReportPage() {
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <p className="rounded-xl bg-slate-950/50 p-3 text-sm">Leads Ativos<br /><span className="text-xl font-semibold">{Math.round(data?.pipeline_financeiro?.leads_ativos || 0)}</span></p>
               <p className="rounded-xl bg-slate-950/50 p-3 text-sm">Cirurgias esperadas<br /><span className="text-xl font-semibold">{Math.round(data?.pipeline_financeiro?.cirurgias_esperadas || 0)}</span></p>
-              <p className="rounded-xl bg-slate-950/50 p-3 text-sm">Potencial Receita<br /><span className="text-xl font-semibold">{money.format(data?.pipeline_financeiro?.potencial_receita || 0)}</span></p>
+              <p className="rounded-xl bg-slate-950/50 p-3 text-sm">Potencial Receita<br /><span className="text-xl font-semibold">{asMoney(data?.pipeline_financeiro?.potencial_receita)}</span></p>
             </div>
             <p className="mt-2 text-xs text-slate-400">{data?.pipeline_financeiro?.metodo}</p>
           </article>
@@ -243,7 +253,7 @@ export default function ExecutiveReportPage() {
             <h2 className="text-lg font-semibold">Indicadores Operacionais</h2>
             <div className="mt-3 space-y-2 text-sm text-slate-200">
               <p>Conversão: <b>{pct(indicadores.conversao_media_rede)}</b> · {indicadores?.unidade_critica_conversao?.unidade || 'n/d'}: {pct(indicadores?.unidade_critica_conversao?.valor)}</p>
-              <p>Ticket Médio: <b>{money.format(indicadores.ticket_medio_rede || 0)}</b> · {indicadores?.unidade_ticket_abaixo?.unidade || 'n/d'}: {money.format(indicadores?.unidade_ticket_abaixo?.valor || 0)}</p>
+              <p>Ticket Médio: <b>{asMoney(indicadores.ticket_medio_rede)}</b> · {indicadores?.unidade_ticket_abaixo?.unidade || 'n/d'}: {asMoney(indicadores?.unidade_ticket_abaixo?.valor)}</p>
             </div>
           </article>
         </section>
@@ -254,6 +264,11 @@ export default function ExecutiveReportPage() {
             {(data?.qualidade_dados?.flags || []).map((flag) => <li key={flag}>{flag}</li>)}
             {(data?.qualidade_dados?.flags || []).length === 0 && <li>Sem alertas de qualidade no recorte atual.</li>}
           </ul>
+          {Array.isArray(data?.qualidade_dados?.observacoes) && data.qualidade_dados.observacoes.length > 0 && (
+            <div className="mt-3 rounded-lg border border-slate-700/70 bg-slate-950/40 p-3 text-xs text-slate-400">
+              {data.qualidade_dados.observacoes.map((item) => <p key={item}>• {item}</p>)}
+            </div>
+          )}
         </footer>
       </div>
     </div>

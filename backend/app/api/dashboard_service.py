@@ -282,17 +282,20 @@ def _format_period_label(comp: str | None) -> str:
 def _fin_dict_from_row(row) -> dict:
     if not row:
         return {
+            "receita_bruta": None,
             "receita_liquida": None,
             "custos_despesas": None,
             "ebitda": None,
             "lucro_liquido": None,
         }
+    receita_bruta = _safe_float(getattr(row, "receita_bruta", 0))
     receita_liquida = _safe_float(getattr(row, "receita_liquida", 0))
     custos = _safe_float(getattr(row, "custos", 0))
     despesas = _safe_float(getattr(row, "despesas", 0))
     ebitda = _safe_float(getattr(row, "ebitda", 0))
     ll = _safe_float(getattr(row, "lucro_liquido", 0))
     return {
+        "receita_bruta": receita_bruta,
         "receita_liquida": receita_liquida,
         "custos_despesas": custos + despesas,
         "ebitda": ebitda,
@@ -326,6 +329,7 @@ def get_executive_report(db: Session, filters: dict, stale_threshold_hours: int)
         if not comp:
             return None
         q = select(
+            func.sum(FactFinanceiroMensal.receita_bruta).label("receita_bruta"),
             func.sum(FactFinanceiroMensal.receita_liquida).label("receita_liquida"),
             func.sum(FactFinanceiroMensal.custos).label("custos"),
             func.sum(FactFinanceiroMensal.despesas).label("despesas"),
@@ -477,6 +481,7 @@ def get_executive_report(db: Session, filters: dict, stale_threshold_hours: int)
             "subtitle": "Uso interno · Confidencial",
             "last_update": last_update.get("last_update"),
             "status": last_update.get("status"),
+            "periodo_referencia": latest_comp,
         },
         "resumo_executivo": {
             "receita_bruta": summary["financeiro"]["receita_bruta"],
@@ -484,12 +489,12 @@ def get_executive_report(db: Session, filters: dict, stale_threshold_hours: int)
             "lucro_liquido": summary["financeiro"]["lucro_liquido"],
             "saude_rede": risco_counts,
             "variacao_qoq": {
-                "receita_bruta": _variation(summary["financeiro"]["receita_bruta"], fin_qoq.get("receita_liquida")),
+                "receita_bruta": _variation(summary["financeiro"]["receita_bruta"], fin_qoq.get("receita_bruta")),
                 "ebitda": _variation(summary["financeiro"]["ebitda"], fin_qoq.get("ebitda")),
                 "lucro_liquido": _variation(summary["financeiro"]["lucro_liquido"], fin_qoq.get("lucro_liquido")),
             },
             "variacao_yoy": {
-                "receita_bruta": _variation(summary["financeiro"]["receita_bruta"], fin_yoy.get("receita_liquida")),
+                "receita_bruta": _variation(summary["financeiro"]["receita_bruta"], fin_yoy.get("receita_bruta")),
                 "ebitda": _variation(summary["financeiro"]["ebitda"], fin_yoy.get("ebitda")),
                 "lucro_liquido": _variation(summary["financeiro"]["lucro_liquido"], fin_yoy.get("lucro_liquido")),
             },
@@ -534,5 +539,9 @@ def get_executive_report(db: Session, filters: dict, stale_threshold_hours: int)
                 "source_file_name": last_update.get("source_file_name"),
                 "source_file_last_modified": last_update.get("source_file_last_modified"),
             },
+            "observacoes": [
+                "Comparativos QoQ/YoY exibem 'n/d' quando não há histórico suficiente.",
+                "Rankings excluem unidades marcadas com excluir_de_medias=True.",
+            ],
         },
     }

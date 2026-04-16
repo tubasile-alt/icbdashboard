@@ -75,11 +75,23 @@ Fluxo:
 - `GET /dashboard/profissionais`
 - `GET /dashboard/financeiro`
 - `GET /dashboard/fiscal`
+- `GET /dashboard/executive-report` (visão agregada executiva para diretoria/CFO)
 
 Filtros globais: `anos`, `meses`, `competencias`, `unidades` (e `profissionais` quando aplicável).
 
 ## 5) Frontend (após backend)
 Frontend permanece consumindo os endpoints acima via `frontend/src/lib/api.js` e exibindo módulos operacional/financeiro/fiscal em cards, gráficos e tabelas.
+
+### Relatório Executivo Visual
+- Rota principal: `http://localhost:5173/executive-report`
+- Alias: `http://localhost:5173/relatorio-executivo`
+- A página usa o endpoint `GET /dashboard/executive-report` e renderiza:
+  - Header executivo com status de atualização.
+  - Resumo executivo (Receita Bruta, EBITDA, Lucro Líquido, Saúde da Rede).
+  - Alertas e ações + unidades para avaliar fechamento.
+  - DRE consolidada com QoQ/YoY e fallback `n/d`.
+  - Ranking Top/Bottom 5 com regra de fallback de métrica.
+  - Pipeline financeiro, indicadores operacionais e qualidade de dados.
 
 ## Execução local
 ### Backend
