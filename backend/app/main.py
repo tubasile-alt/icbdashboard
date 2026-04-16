@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .api.dashboard_service import (
     get_dashboard_summary,
+    get_executive_report,
     get_financeiro_dashboard,
     get_fiscal_dashboard,
     get_filter_options,
@@ -122,6 +123,11 @@ def dashboard_alertas(filters: dict = Depends(_filters), db: Session = Depends(g
 @app.get("/dashboard/options")
 def dashboard_options(db: Session = Depends(get_db)):
     return get_filter_options(db)
+
+
+@app.get("/dashboard/executive-report")
+def dashboard_executive_report(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
+    return get_executive_report(db, filters, settings.stale_threshold_hours)
 
 
 @app.get("/unidades/status", response_model=UnidadeStatusListResponse)
