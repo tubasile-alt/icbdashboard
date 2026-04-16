@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getExecutiveReport } from '../lib/api';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pct = (value) => (typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : 'n/d');
@@ -53,6 +55,29 @@ export default function ExecutiveReportPage() {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pdfStatus, setPdfStatus] = useState('idle');
+
+  const handleDownloadPdf = useCallback(async () => {
+    setPdfStatus('loading');
+    try {
+      const res = await fetch(`${API_URL}/dashboard/relatorio?periodo=trimestre`);
+      if (!res.ok) throw new Error(`Erro ${res.status}`);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ICB_Relatorio_Executivo_Trimestral.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setPdfStatus('done');
+      setTimeout(() => setPdfStatus('idle'), 3000);
+    } catch (err) {
+      setPdfStatus('error');
+      setTimeout(() => setPdfStatus('idle'), 4000);
+    }
+  }, []);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -92,11 +117,6 @@ export default function ExecutiveReportPage() {
     return <div className="min-h-screen bg-slateDeep p-8 text-rose-200">{error}</div>;
   }
 
-  const exportPdfHref = (() => {
-    const qp = new URLSearchParams();
-    exportFilterKeys.forEach((key) => (exportFilters[key] || []).forEach((value) => qp.append(key, value)));
-    return `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export/executive-report-pdf?${qp.toString()}`;
-  })();
 
   return (
     <div
@@ -114,12 +134,13 @@ export default function ExecutiveReportPage() {
 
             <div className="text-right">
               {!isExportMode && (
-                <a
-                  href={exportPdfHref}
-                  className="mb-3 inline-flex rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={pdfStatus === 'loading'}
+                  className="mb-3 inline-flex items-center gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
                 >
-                  Exportar PDF
-                </a>
+                  {pdfStatus === 'loading' ? '⏳ Gerando PDF…' : pdfStatus === 'done' ? '✓ Baixado' : pdfStatus === 'error' ? '✗ Erro — tente novamente' : '⬇ Exportar PDF'}
+                </button>
               )}
               <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${status.chip}`}>{status.label}</span>
               <p className="mt-2 text-xs text-slate-400">
