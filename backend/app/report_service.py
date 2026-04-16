@@ -969,12 +969,16 @@ def endpoint_executive_report(db: Session = Depends(get_db)):
 
 
 @router.get('/dashboard/relatorio-executivo-pdf')
-def endpoint_relatorio_executivo_pdf(db: Session = Depends(get_db)):
+def endpoint_relatorio_executivo_pdf(
+    periodo: str = Query(default='trimestre', pattern='^(mes|trimestre)$'),
+    db: Session = Depends(get_db),
+):
     """Gera o painel executivo visual de uma página em PDF (ReportLab)."""
     from .services.executive_dashboard_pdf import generate_executive_dashboard_pdf
     from .api.dashboard_service import get_executive_report
 
-    data = get_executive_report(db, filters={}, stale_threshold_hours=24)
+    data = get_executive_report(db, filters={'periodo': periodo}, stale_threshold_hours=24)
+    data['header']['periodo_referencia_label'] = 'Último Mês' if periodo == 'mes' else 'Último Trimestre'
     pdf_bytes = generate_executive_dashboard_pdf(data)
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

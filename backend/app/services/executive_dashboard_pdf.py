@@ -153,7 +153,7 @@ def generate_executive_dashboard_pdf(data: dict) -> bytes:
     # Title — right
     resumo = data.get('resumo_executivo', {})
     header = data.get('header', {})
-    periodo = header.get('periodo_referencia', 'Q1 2026')
+    periodo = header.get('periodo_referencia_label') or header.get('periodo_referencia', 'Q1 2026')
     c.setFont('Helvetica-Bold', 10)
     c.setFillColor(WHITE)
     title_text = f'Painel Executivo  –  {periodo}'
