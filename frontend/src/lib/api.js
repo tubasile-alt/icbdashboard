@@ -48,6 +48,7 @@ export const getFilterOptions = async () => {
 
 export const getExecutiveReport = async (filters = {}) => {
   const params = paramsFromFilters(filters);
+  if (filters.periodo) params.periodo = filters.periodo;
   const res = await api.get('/dashboard/executive-report', { params });
   return res.data;
 };

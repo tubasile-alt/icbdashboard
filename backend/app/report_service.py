@@ -630,36 +630,38 @@ def _gerar_pdf(dados: dict, periodo: str, titulo: str, sub: str) -> bytes:
     return buf.getvalue()
 
 
-@router.get('/dashboard/executive-report')
-def endpoint_executive_report(db: Session = Depends(get_db)):
-    """JSON endpoint for the ExecutiveReportPage — last trimestre data."""
+def _build_executive_data(db, periodo: str = 'trimestre') -> dict:
+    """Core data builder shared by the JSON endpoint and the PDF export."""
     import datetime as _dt
 
-    # ── helpers ──────────────────────────────────────────────────────────────
     def _safe(v):
         try:
             f = float(v)
-            return None if (f != f) else f  # NaN check
+            return None if (f != f) else f
         except Exception:
             return None
 
+    n_meses = 1 if periodo == 'mes' else 3
+    periodo_label = 'Último Mês' if periodo == 'mes' else 'Último Trimestre'
+
     now = _dt.datetime.now()
 
-    # ── last 3 competências with data ────────────────────────────────────────
+    # ── last N competências with data ─────────────────────────────────────────
     try:
         comps = db.execute(text("""
             SELECT competencia FROM (
                 SELECT DISTINCT competencia FROM fact_financeiro_mensal
-                WHERE receita_bruta > 0 ORDER BY competencia DESC LIMIT 3
+                WHERE receita_bruta > 0 ORDER BY competencia DESC LIMIT :n
             ) s ORDER BY competencia
-        """)).scalars().all()
+        """), {'n': n_meses}).scalars().all()
     except Exception:
         db.rollback()
         comps = []
 
     if not comps:
         return {'header': {'title': 'Painel Executivo ICB', 'subtitle': 'Sem dados disponíveis',
-                           'periodo_referencia': 'n/d', 'last_update': now.isoformat(), 'status': 'desatualizado'},
+                           'periodo_referencia': 'n/d', 'periodo_referencia_label': periodo_label,
+                           'last_update': now.isoformat(), 'status': 'desatualizado'},
                 'resumo_executivo': {}, 'alertas': {'items': [], 'avaliacao_fechamento': []},
                 'dre_consolidada': {'linhas': []}, 'ranking': {'top_5': [], 'bottom_5': []},
                 'pipeline_financeiro': {}, 'indicadores_operacionais': {}, 'qualidade_dados': {'flags': [], 'observacoes': []}}
@@ -945,6 +947,7 @@ def endpoint_executive_report(db: Session = Depends(get_db)):
             'title': 'Painel Executivo ICB',
             'subtitle': f'Período de referência: {periodo_ref} · Uso interno · Confidencial',
             'periodo_referencia': periodo_ref,
+            'periodo_referencia_label': periodo_label,
             'last_update': last_upd.isoformat() if last_upd and hasattr(last_upd, 'isoformat') else now.isoformat(),
             'status': header_status,
         },
@@ -968,6 +971,15 @@ def endpoint_executive_report(db: Session = Depends(get_db)):
     }
 
 
+@router.get('/dashboard/executive-report')
+def endpoint_executive_report(
+    periodo: str = Query(default='trimestre', pattern='^(mes|trimestre)$'),
+    db: Session = Depends(get_db),
+):
+    """JSON endpoint for the ExecutiveReportPage. Supports periodo=mes|trimestre."""
+    return _build_executive_data(db, periodo)
+
+
 @router.get('/dashboard/relatorio-executivo-pdf')
 def endpoint_relatorio_executivo_pdf(
     periodo: str = Query(default='trimestre', pattern='^(mes|trimestre)$'),
@@ -975,10 +987,8 @@ def endpoint_relatorio_executivo_pdf(
 ):
     """Gera o painel executivo visual de uma página em PDF (ReportLab)."""
     from .services.executive_dashboard_pdf import generate_executive_dashboard_pdf
-    from .api.dashboard_service import get_executive_report
 
-    data = get_executive_report(db, filters={'periodo': periodo}, stale_threshold_hours=24)
-    data['header']['periodo_referencia_label'] = 'Último Mês' if periodo == 'mes' else 'Último Trimestre'
+    data = _build_executive_data(db, periodo)
     pdf_bytes = generate_executive_dashboard_pdf(data)
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

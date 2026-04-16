@@ -131,17 +131,29 @@ export default function ExecutiveReportPage() {
               <h1 className="mt-2 text-3xl font-semibold">{data?.header?.title || 'Painel Executivo'}</h1>
               <p className="mt-1 text-sm text-slate-400">{data?.header?.subtitle || 'Uso interno · Confidencial'}</p>
               <div className="mt-3 flex items-center gap-3">
-                <label className="text-xs text-slate-400">Filtro:</label>
-                <select
-                  value={periodo}
-                  onChange={(e) => setPeriodo(e.target.value)}
-                  className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-xs text-slate-100 outline-none"
-                >
-                  <option value="mes">Mês</option>
-                  <option value="trimestre">Trimestre</option>
-                </select>
+                <span className="text-xs font-medium text-slate-400">Período:</span>
+                <div className="flex gap-1">
+                  {['mes', 'trimestre'].map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPeriodo(p)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                        periodo === p
+                          ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/50'
+                          : 'border border-slate-700 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {p === 'mes' ? 'Mês' : 'Trimestre'}
+                    </button>
+                  ))}
+                </div>
+                {loading && <span className="animate-pulse text-xs text-slate-500">atualizando…</span>}
               </div>
-              <p className="mt-2 text-xs text-slate-500">Período de referência: {data?.header?.periodo_referencia || 'n/d'}</p>
+              <p className="mt-2 text-xs text-slate-500">
+                {data?.header?.periodo_referencia_label || (periodo === 'mes' ? 'Último Mês' : 'Último Trimestre')}
+                {data?.header?.periodo_referencia ? ` · ${data.header.periodo_referencia}` : ''}
+              </p>
             </div>
 
             <div className="text-right">
