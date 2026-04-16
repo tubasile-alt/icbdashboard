@@ -259,7 +259,7 @@ export default function App() {
           >
             Relatório Executivo Visual
           </a>
-          <ReportButton />
+          <ReportButton filters={filters} />
         </div>
       </header>
 

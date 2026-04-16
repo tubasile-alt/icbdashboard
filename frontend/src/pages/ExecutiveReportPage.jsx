@@ -22,6 +22,7 @@ const statusConfig = {
 };
 
 const card = 'rounded-2xl border border-slate-700/70 bg-slate-900/50 shadow-[0_20px_50px_rgba(2,8,23,0.35)]';
+const exportFilterKeys = ['anos', 'meses', 'competencias', 'unidades', 'profissionais'];
 
 function ValueWithDelta({ value, qoq, yoy }) {
   return (
@@ -43,6 +44,13 @@ function AlertLevel({ nivel }) {
 }
 
 export default function ExecutiveReportPage() {
+  const queryString = typeof window !== 'undefined' ? window.location.search : '';
+  const isExportMode = useMemo(() => new URLSearchParams(queryString).get('export') === 'true', [queryString]);
+  const exportFilters = useMemo(() => {
+    const search = new URLSearchParams(queryString);
+    return exportFilterKeys.reduce((acc, key) => ({ ...acc, [key]: search.getAll(key) }), {});
+  }, [queryString]);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -53,7 +61,7 @@ export default function ExecutiveReportPage() {
       setLoading(true);
       setError('');
       try {
-        const payload = await getExecutiveReport();
+        const payload = await getExecutiveReport(exportFilters);
         if (active) setData(payload);
       } catch {
         if (active) setError('Falha ao carregar relatório executivo.');
@@ -63,12 +71,12 @@ export default function ExecutiveReportPage() {
     };
 
     load();
-    const id = setInterval(load, 60_000);
+    const id = isExportMode ? null : setInterval(load, 60_000);
     return () => {
       active = false;
-      clearInterval(id);
+      if (id) clearInterval(id);
     };
-  }, []);
+  }, [exportFilters, isExportMode]);
 
   const status = statusConfig[data?.header?.status] || statusConfig.desatualizado;
 
@@ -84,9 +92,17 @@ export default function ExecutiveReportPage() {
     return <div className="min-h-screen bg-slateDeep p-8 text-rose-200">{error}</div>;
   }
 
+  const exportPdfHref = (() => {
+    const qp = new URLSearchParams();
+    exportFilterKeys.forEach((key) => (exportFilters[key] || []).forEach((value) => qp.append(key, value)));
+    return `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export/executive-report-pdf?${qp.toString()}`;
+  })();
+
   return (
-    <div className="min-h-screen bg-slateDeep bg-[radial-gradient(circle_at_top,rgba(30,64,175,0.15),transparent_45%)] px-4 py-6 text-slate-100 md:px-7 md:py-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div
+      className={`min-h-screen bg-slateDeep bg-[radial-gradient(circle_at_top,rgba(30,64,175,0.15),transparent_45%)] px-4 py-6 text-slate-100 md:px-7 md:py-8 ${isExportMode ? 'executive-report--export' : ''}`}
+    >
+      <div data-executive-report-root="true" className={`mx-auto max-w-7xl space-y-6 ${isExportMode ? 'pdf-root' : ''}`}>
         <header className={`${card} p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -97,6 +113,14 @@ export default function ExecutiveReportPage() {
             </div>
 
             <div className="text-right">
+              {!isExportMode && (
+                <a
+                  href={exportPdfHref}
+                  className="mb-3 inline-flex rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+                >
+                  Exportar PDF
+                </a>
+              )}
               <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${status.chip}`}>{status.label}</span>
               <p className="mt-2 text-xs text-slate-400">
                 Última atualização: {data?.header?.last_update ? new Date(data.header.last_update).toLocaleString('pt-BR') : 'n/d'}
