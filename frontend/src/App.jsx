@@ -253,6 +253,12 @@ export default function App() {
 
         <div className="flex flex-col items-end gap-3">
           <UpdateBadge status={payload?.lastUpdate?.status} lastUpdate={payload?.lastUpdate?.last_update} />
+          <a
+            href="/executive-report"
+            className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+          >
+            Relatório Executivo Visual
+          </a>
           <ReportButton />
         </div>
       </header>

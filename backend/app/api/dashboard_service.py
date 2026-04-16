@@ -3,12 +3,12 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from ..alerts_service import build_alerts
 from ..services.unidade_status_service import get_unidades_ativas_para_metricas
-from ..models import FactFinanceiroMensal, FactFiscalMensal, FactProducaoProfissionalMensal, FactUnidadeMensal, Metadata
+from ..models import FactFinanceiroMensal, FactFiscalMensal, FactProducaoProfissionalMensal, FactUnidadeMensal, Metadata, UnidadeStatus
 
 
 def _safe_float(value, default: float = 0.0) -> float:
@@ -240,4 +240,308 @@ def get_filter_options(db: Session) -> dict:
         "competencias": all_competencias,
         "unidades": unidades,
         "profissionais": profissionais,
+    }
+
+
+def _parse_competencia(comp: str | None) -> tuple[int, int] | None:
+    if not comp:
+        return None
+    parts = str(comp).split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+
+
+def _shift_competencia(comp: str, months_delta: int) -> str | None:
+    parsed = _parse_competencia(comp)
+    if not parsed:
+        return None
+    ano, mes = parsed
+    idx = ano * 12 + (mes - 1) + months_delta
+    if idx < 0:
+        return None
+    target_ano = idx // 12
+    target_mes = idx % 12 + 1
+    return f"{target_ano}-{target_mes:02d}"
+
+
+def _format_period_label(comp: str | None) -> str:
+    if not comp:
+        return "Período indisponível"
+    parsed = _parse_competencia(comp)
+    if not parsed:
+        return str(comp)
+    ano, mes = parsed
+    quarter = ((mes - 1) // 3) + 1
+    return f"Q{quarter} {ano}"
+
+
+def _fin_dict_from_row(row) -> dict:
+    if not row:
+        return {
+            "receita_bruta": None,
+            "receita_liquida": None,
+            "custos_despesas": None,
+            "ebitda": None,
+            "lucro_liquido": None,
+        }
+    receita_bruta = _safe_float(getattr(row, "receita_bruta", 0))
+    receita_liquida = _safe_float(getattr(row, "receita_liquida", 0))
+    custos = _safe_float(getattr(row, "custos", 0))
+    despesas = _safe_float(getattr(row, "despesas", 0))
+    ebitda = _safe_float(getattr(row, "ebitda", 0))
+    ll = _safe_float(getattr(row, "lucro_liquido", 0))
+    return {
+        "receita_bruta": receita_bruta,
+        "receita_liquida": receita_liquida,
+        "custos_despesas": custos + despesas,
+        "ebitda": ebitda,
+        "lucro_liquido": ll,
+    }
+
+
+def _variation(current: float | None, previous: float | None) -> float | None:
+    if current is None or previous in (None, 0):
+        return None
+    return _safe_float((current - previous) / abs(previous))
+
+
+def get_executive_report(db: Session, filters: dict, stale_threshold_hours: int) -> dict:
+    summary = get_dashboard_summary(db, filters)
+    alertas = build_alerts(db)
+    unidades_dashboard = get_unidades_dashboard(db, filters)
+    last_update = get_last_update_status(db, stale_threshold_hours)
+    unidades_status = list(db.execute(select(UnidadeStatus)).scalars().all())
+
+    q_latest_comp = select(func.max(FactFinanceiroMensal.competencia))
+    q_latest_comp = _apply_filters(q_latest_comp, FactFinanceiroMensal, filters)
+    q_latest_comp = q_latest_comp.where(FactFinanceiroMensal.unidade_ref == "__CONSOLIDADO__")
+    latest_comp = db.scalar(q_latest_comp)
+
+    period_title = _format_period_label(latest_comp)
+    qoq_comp = _shift_competencia(latest_comp, -3) if latest_comp else None
+    yoy_comp = _shift_competencia(latest_comp, -12) if latest_comp else None
+
+    def _get_financial_for_comp(comp: str | None):
+        if not comp:
+            return None
+        q = select(
+            func.sum(FactFinanceiroMensal.receita_bruta).label("receita_bruta"),
+            func.sum(FactFinanceiroMensal.receita_liquida).label("receita_liquida"),
+            func.sum(FactFinanceiroMensal.custos).label("custos"),
+            func.sum(FactFinanceiroMensal.despesas).label("despesas"),
+            func.sum(FactFinanceiroMensal.ebitda).label("ebitda"),
+            func.sum(FactFinanceiroMensal.lucro_liquido).label("lucro_liquido"),
+        ).where(
+            and_(
+                FactFinanceiroMensal.competencia == comp,
+                FactFinanceiroMensal.unidade_ref == "__CONSOLIDADO__",
+            )
+        )
+        return db.execute(q).one()
+
+    fin_current = _fin_dict_from_row(_get_financial_for_comp(latest_comp))
+    fin_qoq = _fin_dict_from_row(_get_financial_for_comp(qoq_comp))
+    fin_yoy = _fin_dict_from_row(_get_financial_for_comp(yoy_comp))
+
+    dre_rows = []
+    for key, label in (
+        ("receita_liquida", "Receita Líquida"),
+        ("custos_despesas", "Custos & Despesas"),
+        ("ebitda", "EBITDA"),
+        ("lucro_liquido", "Lucro Líquido"),
+    ):
+        current_value = fin_current[key]
+        qoq_value = _variation(current_value, fin_qoq[key])
+        yoy_value = _variation(current_value, fin_yoy[key])
+        dre_rows.append(
+            {
+                "linha": label,
+                "valor_atual": current_value,
+                "variacao_qoq": qoq_value,
+                "variacao_yoy": yoy_value,
+                "tem_qoq": qoq_value is not None,
+                "tem_yoy": yoy_value is not None,
+            }
+        )
+
+    status_map = {item.unidade: item for item in unidades_status}
+    risco_counts = {"saudaveis": 0, "atencao": 0, "risco": 0, "encerradas": 0}
+    avaliacao_fechamento: list[dict] = []
+
+    q_fin_unidade = select(
+        FactFinanceiroMensal.unidade_ref,
+        func.sum(FactFinanceiroMensal.receita_bruta).label("receita_bruta"),
+        func.sum(FactFinanceiroMensal.ebitda).label("ebitda"),
+        func.sum(FactFinanceiroMensal.lucro_liquido).label("lucro_liquido"),
+    ).where(FactFinanceiroMensal.unidade_ref != "__CONSOLIDADO__")
+    q_fin_unidade = _apply_filters(q_fin_unidade, FactFinanceiroMensal, filters).group_by(FactFinanceiroMensal.unidade_ref)
+    rows_fin_unidade = db.execute(q_fin_unidade).all()
+    fin_by_unit = {
+        str(row.unidade_ref): {
+            "receita_bruta": _safe_float(row.receita_bruta),
+            "ebitda": _safe_float(row.ebitda),
+            "lucro_liquido": _safe_float(row.lucro_liquido),
+            "margem_estimada": _safe_float(row.lucro_liquido) / _safe_float(row.receita_bruta) if _safe_float(row.receita_bruta) else None,
+        }
+        for row in rows_fin_unidade
+    }
+    critical_units = set()
+    for item in alertas.get("items", []):
+        if item.get("nivel") == "critico":
+            for unidade in item.get("unidades", []):
+                critical_units.add(unidade)
+
+    for unidade_row in unidades_dashboard:
+        unidade = unidade_row.get("unidade")
+        status_item = status_map.get(unidade)
+        status = status_item.status if status_item else "ativa"
+        fin = fin_by_unit.get(unidade, {})
+        margem = fin.get("margem_estimada")
+        has_critical = unidade in critical_units
+        if status == "encerrada":
+            risco_counts["encerradas"] += 1
+            continue
+        if has_critical or (margem is not None and margem < 0):
+            bucket = "risco"
+        elif status in {"suspensa", "em_reestruturacao"}:
+            bucket = "atencao"
+        else:
+            bucket = "saudaveis"
+        risco_counts[bucket] += 1
+
+        low_revenue = fin.get("receita_bruta", 0) < 50000 if fin else False
+        recurrent_negative = fin.get("ebitda", 0) < 0 if fin else False
+        if status in {"suspensa", "em_reestruturacao"} or low_revenue or recurrent_negative or has_critical:
+            avaliacao_fechamento.append(
+                {
+                    "unidade": unidade,
+                    "status": status,
+                    "ebitda": fin.get("ebitda"),
+                    "receita_bruta": fin.get("receita_bruta"),
+                    "motivo": "Status sensível ou performance financeira crítica",
+                }
+            )
+
+    filtered_unidades = [u for u in unidades_dashboard if u.get("unidade") in get_unidades_ativas_para_metricas(db)]
+    ranking_source = []
+    for unidade_row in filtered_unidades:
+        unidade = unidade_row.get("unidade")
+        fin = fin_by_unit.get(unidade, {})
+        ebitda = fin.get("ebitda")
+        ll = fin.get("lucro_liquido")
+        receita = fin.get("receita_bruta")
+        if ebitda is not None and abs(ebitda) > 0:
+            principal = ebitda
+            metrica = "ebitda"
+        elif ll is not None and abs(ll) > 0:
+            principal = ll
+            metrica = "lucro_liquido"
+        else:
+            principal = receita if receita is not None else unidade_row.get("receita_operacional", 0)
+            metrica = "receita_bruta" if receita is not None else "receita_operacional"
+        ranking_source.append(
+            {
+                "unidade": unidade,
+                "valor": _safe_float(principal),
+                "metrica": metrica,
+            }
+        )
+    ranking_sorted = sorted(ranking_source, key=lambda item: item["valor"], reverse=True)
+
+    conversion_rows = [u for u in filtered_unidades if _safe_float(u.get("conv_consulta_cirurgia", 0)) > 0]
+    conversao_media = (
+        _safe_float(sum(_safe_float(u.get("conv_consulta_cirurgia", 0)) for u in conversion_rows) / len(conversion_rows))
+        if conversion_rows
+        else 0
+    )
+    unidade_critica_conv = min(conversion_rows, key=lambda u: _safe_float(u.get("conv_consulta_cirurgia", 0)), default=None)
+    ticket_rows = [u for u in filtered_unidades if _safe_float(u.get("ticket_medio_cirurgia", 0)) > 0]
+    ticket_medio = (
+        _safe_float(sum(_safe_float(u.get("ticket_medio_cirurgia", 0)) for u in ticket_rows) / len(ticket_rows))
+        if ticket_rows
+        else 0
+    )
+    unidade_ticket_abaixo = min(ticket_rows, key=lambda u: _safe_float(u.get("ticket_medio_cirurgia", 0)), default=None)
+
+    data_quality_flags = []
+    if any(u.get("mes_incompleto") for u in unidades_dashboard):
+        data_quality_flags.append("Há unidades com mês incompleto na visão selecionada.")
+    if any(u.get("dados_inconsistentes") for u in unidades_dashboard):
+        data_quality_flags.append("Há registros com inconsistência detectada no ETL.")
+    if not latest_comp:
+        data_quality_flags.append("Base financeira indisponível para o período selecionado.")
+
+    return {
+        "header": {
+            "title": f"Painel Executivo — {period_title}",
+            "subtitle": "Uso interno · Confidencial",
+            "last_update": last_update.get("last_update"),
+            "status": last_update.get("status"),
+            "periodo_referencia": latest_comp,
+        },
+        "resumo_executivo": {
+            "receita_bruta": summary["financeiro"]["receita_bruta"],
+            "ebitda": summary["financeiro"]["ebitda"],
+            "lucro_liquido": summary["financeiro"]["lucro_liquido"],
+            "saude_rede": risco_counts,
+            "variacao_qoq": {
+                "receita_bruta": _variation(summary["financeiro"]["receita_bruta"], fin_qoq.get("receita_bruta")),
+                "ebitda": _variation(summary["financeiro"]["ebitda"], fin_qoq.get("ebitda")),
+                "lucro_liquido": _variation(summary["financeiro"]["lucro_liquido"], fin_qoq.get("lucro_liquido")),
+            },
+            "variacao_yoy": {
+                "receita_bruta": _variation(summary["financeiro"]["receita_bruta"], fin_yoy.get("receita_bruta")),
+                "ebitda": _variation(summary["financeiro"]["ebitda"], fin_yoy.get("ebitda")),
+                "lucro_liquido": _variation(summary["financeiro"]["lucro_liquido"], fin_yoy.get("lucro_liquido")),
+            },
+        },
+        "alertas": {
+            "summary": alertas.get("summary", {}),
+            "items": alertas.get("items", []),
+            "avaliacao_fechamento": sorted(avaliacao_fechamento, key=lambda x: x.get("ebitda", 0))[:8],
+        },
+        "dre_consolidada": {
+            "competencia_atual": latest_comp,
+            "competencia_qoq": qoq_comp,
+            "competencia_yoy": yoy_comp,
+            "linhas": dre_rows,
+        },
+        "ranking": {
+            "top_5": ranking_sorted[:5],
+            "bottom_5": list(reversed(ranking_sorted[-5:])),
+            "regra_fallback": "Ranking usa EBITDA; se indisponível/zero usa Lucro Líquido; por último Receita Operacional.",
+        },
+        "pipeline_financeiro": {
+            "leads_ativos": summary["funil"]["leads"],
+            "cirurgias_esperadas": summary["funil"]["cirurgias"],
+            "potencial_receita": summary["operacional"]["receita_operacional"],
+            "metodo": "Provisório: inferido dos dados operacionais agregados (leads/cirurgias/receita operacional).",
+        },
+        "indicadores_operacionais": {
+            "conversao_media_rede": conversao_media,
+            "unidade_critica_conversao": {
+                "unidade": unidade_critica_conv.get("unidade") if unidade_critica_conv else None,
+                "valor": unidade_critica_conv.get("conv_consulta_cirurgia") if unidade_critica_conv else None,
+            },
+            "ticket_medio_rede": ticket_medio,
+            "unidade_ticket_abaixo": {
+                "unidade": unidade_ticket_abaixo.get("unidade") if unidade_ticket_abaixo else None,
+                "valor": unidade_ticket_abaixo.get("ticket_medio_cirurgia") if unidade_ticket_abaixo else None,
+            },
+        },
+        "qualidade_dados": {
+            "flags": data_quality_flags,
+            "fonte": {
+                "source_file_name": last_update.get("source_file_name"),
+                "source_file_last_modified": last_update.get("source_file_last_modified"),
+            },
+            "observacoes": [
+                "Comparativos QoQ/YoY exibem 'n/d' quando não há histórico suficiente.",
+                "Rankings excluem unidades marcadas com excluir_de_medias=True.",
+            ],
+        },
     }

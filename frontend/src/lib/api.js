@@ -45,3 +45,9 @@ export const getFilterOptions = async () => {
   const res = await api.get('/dashboard/options');
   return res.data;
 };
+
+export const getExecutiveReport = async (filters = {}) => {
+  const params = paramsFromFilters(filters);
+  const res = await api.get('/dashboard/executive-report', { params });
+  return res.data;
+};
