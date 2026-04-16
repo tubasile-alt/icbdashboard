@@ -630,6 +630,344 @@ def _gerar_pdf(dados: dict, periodo: str, titulo: str, sub: str) -> bytes:
     return buf.getvalue()
 
 
+@router.get('/dashboard/executive-report')
+def endpoint_executive_report(db: Session = Depends(get_db)):
+    """JSON endpoint for the ExecutiveReportPage — last trimestre data."""
+    import datetime as _dt
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def _safe(v):
+        try:
+            f = float(v)
+            return None if (f != f) else f  # NaN check
+        except Exception:
+            return None
+
+    now = _dt.datetime.now()
+
+    # ── last 3 competências with data ────────────────────────────────────────
+    try:
+        comps = db.execute(text("""
+            SELECT competencia FROM (
+                SELECT DISTINCT competencia FROM fact_financeiro_mensal
+                WHERE receita_bruta > 0 ORDER BY competencia DESC LIMIT 3
+            ) s ORDER BY competencia
+        """)).scalars().all()
+    except Exception:
+        db.rollback()
+        comps = []
+
+    if not comps:
+        return {'header': {'title': 'Painel Executivo ICB', 'subtitle': 'Sem dados disponíveis',
+                           'periodo_referencia': 'n/d', 'last_update': now.isoformat(), 'status': 'desatualizado'},
+                'resumo_executivo': {}, 'alertas': {'items': [], 'avaliacao_fechamento': []},
+                'dre_consolidada': {'linhas': []}, 'ranking': {'top_5': [], 'bottom_5': []},
+                'pipeline_financeiro': {}, 'indicadores_operacionais': {}, 'qualidade_dados': {'flags': [], 'observacoes': []}}
+
+    periodo_ref = f"{comps[0]} a {comps[-1]}" if len(comps) > 1 else comps[0]
+
+    # ── current period aggregates ─────────────────────────────────────────────
+    try:
+        cur = db.execute(text("""
+            SELECT
+                COALESCE(SUM(receita_bruta),0)     AS rb,
+                COALESCE(SUM(receita_liquida),0)   AS rl,
+                COALESCE(SUM(ebitda),0)            AS ebt,
+                COALESCE(SUM(lucro_liquido),0)     AS ll,
+                COALESCE(SUM(impostos),0)          AS imp,
+                COALESCE(SUM(custos+despesas),0)   AS cd
+            FROM fact_financeiro_mensal
+            WHERE competencia = ANY(:comps)
+        """), {'comps': list(comps)}).fetchone()
+    except Exception:
+        db.rollback()
+        cur = None
+
+    rb  = _safe(cur.rb)  if cur else 0
+    rl  = _safe(cur.rl)  if cur else 0
+    ebt = _safe(cur.ebt) if cur else 0
+    ll  = _safe(cur.ll)  if cur else 0
+
+    # ── QoQ (previous quarter – same n months) ────────────────────────────────
+    try:
+        prev_comps = db.execute(text("""
+            SELECT competencia FROM (
+                SELECT DISTINCT competencia FROM fact_financeiro_mensal
+                WHERE receita_bruta > 0
+                  AND competencia < :oldest
+                ORDER BY competencia DESC LIMIT :n
+            ) s ORDER BY competencia
+        """), {'oldest': comps[0], 'n': len(comps)}).scalars().all()
+
+        prev = db.execute(text("""
+            SELECT
+                COALESCE(SUM(receita_bruta),0)   AS rb,
+                COALESCE(SUM(ebitda),0)          AS ebt,
+                COALESCE(SUM(lucro_liquido),0)   AS ll
+            FROM fact_financeiro_mensal
+            WHERE competencia = ANY(:comps)
+        """), {'comps': list(prev_comps)}).fetchone() if prev_comps else None
+    except Exception:
+        db.rollback()
+        prev = None
+
+    def _var(cur_v, prev_v):
+        try:
+            return round(cur_v / prev_v - 1, 4) if prev_v else None
+        except Exception:
+            return None
+
+    qoq = {
+        'receita_bruta': _var(rb,  _safe(prev.rb)  if prev else None),
+        'ebitda':        _var(ebt, _safe(prev.ebt) if prev else None),
+        'lucro_liquido': _var(ll,  _safe(prev.ll)  if prev else None),
+    }
+
+    # ── YoY ───────────────────────────────────────────────────────────────────
+    try:
+        yoy_comps = [c.replace(c[:4], str(int(c[:4]) - 1)) for c in comps]
+        yoy_row = db.execute(text("""
+            SELECT
+                COALESCE(SUM(receita_bruta),0)   AS rb,
+                COALESCE(SUM(ebitda),0)          AS ebt,
+                COALESCE(SUM(lucro_liquido),0)   AS ll
+            FROM fact_financeiro_mensal
+            WHERE competencia = ANY(:comps)
+        """), {'comps': yoy_comps}).fetchone()
+    except Exception:
+        db.rollback()
+        yoy_row = None
+
+    yoy = {
+        'receita_bruta': _var(rb,  _safe(yoy_row.rb)  if yoy_row else None),
+        'ebitda':        _var(ebt, _safe(yoy_row.ebt) if yoy_row else None),
+        'lucro_liquido': _var(ll,  _safe(yoy_row.ll)  if yoy_row else None),
+    }
+
+    # ── Saúde da rede (status) ───────────────────────────────────────────────
+    try:
+        status_counts = db.execute(text("""
+            SELECT status, COUNT(*) AS n FROM unidade_status GROUP BY status
+        """)).all()
+        sc = {r.status: r.n for r in status_counts}
+    except Exception:
+        db.rollback()
+        sc = {}
+
+    saude = {
+        'saudaveis':  sc.get('ativa', 0),
+        'atencao':    sc.get('em_reestruturacao', 0) + sc.get('suspensa', 0),
+        'risco':      0,
+        'encerradas': sc.get('encerrada', 0),
+    }
+
+    # ── Alertas ───────────────────────────────────────────────────────────────
+    try:
+        unit_fin = db.execute(text("""
+            SELECT unidade,
+                   SUM(receita_bruta) AS rb,
+                   SUM(ebitda) AS ebt,
+                   SUM(lucro_liquido) AS ll,
+                   SUM(receita_liquida) AS rl
+            FROM fact_financeiro_mensal
+            WHERE competencia = ANY(:comps)
+            GROUP BY unidade
+        """), {'comps': list(comps)}).fetchall()
+    except Exception:
+        db.rollback()
+        unit_fin = []
+
+    alertas_items = []
+    avaliacao_fechamento = []
+    for i, r in enumerate(unit_fin):
+        ll_u  = _safe(r.ll)  or 0
+        rb_u  = _safe(r.rb)  or 0
+        ebt_u = _safe(r.ebt) or 0
+        rl_u  = _safe(r.rl)  or 0
+        mg_ll = (ll_u / rl_u) if rl_u and rl_u > 1000 else None
+        if ll_u < 0:
+            alertas_items.append({
+                'alert_id': f'neg_ll_{i}',
+                'nivel': 'critico',
+                'titulo': f'{r.unidade} — Lucro Líquido negativo',
+                'detalhe': f'LL: R$ {ll_u:,.0f} · Margem: {mg_ll*100:.1f}%' if mg_ll else f'LL: R$ {ll_u:,.0f}',
+                'unidades': [r.unidade],
+                'impacto': None,
+            })
+            avaliacao_fechamento.append({
+                'unidade': r.unidade,
+                'motivo': 'Lucro Líquido negativo no período',
+                'status': 'Ativa',
+                'ebitda': ebt_u,
+                'receita_bruta': rb_u,
+            })
+
+    # NF alert
+    try:
+        nf = db.execute(text("""
+            SELECT percentual_nf FROM fact_fiscal_mensal
+            WHERE unidade_ref = '__CONSOLIDADO__'
+            ORDER BY competencia DESC LIMIT 1
+        """)).fetchone()
+        if nf and _safe(nf.percentual_nf) is not None and float(nf.percentual_nf) < 0.65:
+            alertas_items.append({
+                'alert_id': 'nf_baixa',
+                'nivel': 'atencao',
+                'titulo': f'% NF emitida abaixo de 65%: {float(nf.percentual_nf)*100:.1f}%',
+                'detalhe': 'Risco de exposição fiscal. Acionar financeiro.',
+                'unidades': [],
+                'impacto': None,
+            })
+    except Exception:
+        db.rollback()
+
+    # ── DRE Consolidada ───────────────────────────────────────────────────────
+    def _dre_line(linha, val, prev_val, yoy_val):
+        return {
+            'linha': linha,
+            'valor_atual': val,
+            'tem_qoq': prev_val is not None,
+            'variacao_qoq': _var(val, prev_val),
+            'tem_yoy': yoy_val is not None,
+            'variacao_yoy': _var(val, yoy_val),
+        }
+
+    imp  = _safe(cur.imp) if cur else 0
+    cd   = _safe(cur.cd)  if cur else 0
+
+    dre_linhas = [
+        _dre_line('Receita Bruta',       rb,  _safe(prev.rb)  if prev else None, _safe(yoy_row.rb)  if yoy_row else None),
+        _dre_line('(-) Impostos',        -imp, None, None),
+        _dre_line('Receita Líquida',     rl,  None, None),
+        _dre_line('(-) Custos/Despesas', -cd, None, None),
+        _dre_line('EBITDA',              ebt, _safe(prev.ebt) if prev else None, _safe(yoy_row.ebt) if yoy_row else None),
+        _dre_line('Lucro Líquido',       ll,  _safe(prev.ll)  if prev else None, _safe(yoy_row.ll)  if yoy_row else None),
+    ]
+
+    # ── Ranking ───────────────────────────────────────────────────────────────
+    ranked = sorted(unit_fin, key=lambda r: _safe(r.ebt) or 0, reverse=True)
+    def _rank_item(r):
+        return {'unidade': r.unidade, 'valor': _safe(r.ebt) or 0, 'metrica': 'EBITDA'}
+
+    top5    = [_rank_item(r) for r in ranked[:5]]
+    bottom5 = [_rank_item(r) for r in ranked[-5:] if (_safe(r.ebt) or 0) < (_safe(ranked[0].ebt) or 1)]
+
+    # ── Pipeline financeiro ───────────────────────────────────────────────────
+    try:
+        pipe = db.execute(text("""
+            SELECT
+                COALESCE(SUM(leads), 0)                  AS leads,
+                COALESCE(SUM(cirurgias), 0)              AS cirurgias,
+                COALESCE(AVG(ticket_medio_cirurgia), 0)  AS ticket
+            FROM fact_unidade_mensal
+            WHERE competencia = ANY(:comps)
+        """), {'comps': list(comps)}).fetchone()
+    except Exception:
+        db.rollback()
+        pipe = None
+
+    leads     = float(pipe.leads    or 0) if pipe else 0
+    cirurgias = float(pipe.cirurgias or 0) if pipe else 0
+    ticket    = float(pipe.ticket   or 0) if pipe else 0
+    conv_est  = cirurgias / leads if leads else 0.12
+
+    pipeline = {
+        'leads_ativos':       leads,
+        'cirurgias_esperadas': round(leads * conv_est),
+        'potencial_receita':   round(leads * conv_est * ticket),
+        'metodo':             'Estimativa baseada em conversão histórica do período',
+    }
+
+    # ── Indicadores operacionais ──────────────────────────────────────────────
+    try:
+        conv_rows = db.execute(text("""
+            SELECT unidade,
+                   COALESCE(AVG(conv_consulta_cirurgia), 0) AS conv,
+                   COALESCE(AVG(ticket_medio_cirurgia), 0)  AS ticket
+            FROM fact_unidade_mensal
+            WHERE competencia = ANY(:comps)
+              AND receita_operacional > 0
+            GROUP BY unidade
+        """), {'comps': list(comps)}).fetchall()
+    except Exception:
+        db.rollback()
+        conv_rows = []
+
+    conv_vals   = [(_safe(r.conv) or 0, r.unidade) for r in conv_rows]
+    ticket_vals = [(_safe(r.ticket) or 0, r.unidade) for r in conv_rows]
+    conv_media  = (sum(v for v, _ in conv_vals) / len(conv_vals)) if conv_vals else None
+    ticket_med  = (sum(v for v, _ in ticket_vals) / len(ticket_vals)) if ticket_vals else None
+    crit_conv   = min(conv_vals,   key=lambda x: x[0]) if conv_vals   else (None, None)
+    crit_ticket = min(ticket_vals, key=lambda x: x[0]) if ticket_vals else (None, None)
+
+    indicadores = {
+        'conversao_media_rede': conv_media,
+        'unidade_critica_conversao': {'unidade': crit_conv[1], 'valor': crit_conv[0]} if crit_conv[1] else None,
+        'ticket_medio_rede': ticket_med,
+        'unidade_ticket_abaixo': {'unidade': crit_ticket[1], 'valor': crit_ticket[0]} if crit_ticket[1] else None,
+    }
+
+    # ── Qualidade de dados ────────────────────────────────────────────────────
+    try:
+        inc = db.execute(text("""
+            SELECT COUNT(*) AS n FROM fact_unidade_mensal
+            WHERE competencia = ANY(:comps) AND dados_inconsistentes = TRUE
+        """), {'comps': list(comps)}).scalar() or 0
+        incomp = db.execute(text("""
+            SELECT COUNT(*) AS n FROM fact_unidade_mensal
+            WHERE competencia = ANY(:comps) AND mes_incompleto = TRUE
+        """), {'comps': list(comps)}).scalar() or 0
+    except Exception:
+        db.rollback()
+        inc, incomp = 0, 0
+
+    flags = []
+    if inc:   flags.append(f'{inc} registro(s) com dados inconsistentes no período')
+    if incomp: flags.append(f'{incomp} registro(s) com mês incompleto')
+
+    # ── Header status ─────────────────────────────────────────────────────────
+    try:
+        last_upd = db.execute(text("SELECT MAX(updated_at) FROM metadata")).scalar()
+    except Exception:
+        db.rollback()
+        last_upd = None
+
+    header_status = 'atualizado'
+    if last_upd:
+        age_h = (now - last_upd.replace(tzinfo=None)).total_seconds() / 3600 if hasattr(last_upd, 'replace') else 999
+        if age_h > 48:
+            header_status = 'desatualizado'
+        elif age_h > 6 or inc or incomp:
+            header_status = 'atencao'
+
+    return {
+        'header': {
+            'title': 'Painel Executivo ICB',
+            'subtitle': f'Período de referência: {periodo_ref} · Uso interno · Confidencial',
+            'periodo_referencia': periodo_ref,
+            'last_update': last_upd.isoformat() if last_upd and hasattr(last_upd, 'isoformat') else now.isoformat(),
+            'status': header_status,
+        },
+        'resumo_executivo': {
+            'receita_bruta': rb,
+            'ebitda': ebt,
+            'lucro_liquido': ll,
+            'variacao_qoq': qoq,
+            'variacao_yoy': yoy,
+            'saude_rede': saude,
+        },
+        'alertas': {
+            'items': alertas_items,
+            'avaliacao_fechamento': avaliacao_fechamento,
+        },
+        'dre_consolidada': {'linhas': dre_linhas},
+        'ranking': {'top_5': top5, 'bottom_5': bottom5},
+        'pipeline_financeiro': pipeline,
+        'indicadores_operacionais': indicadores,
+        'qualidade_dados': {'flags': flags, 'observacoes': []},
+    }
+
+
 @router.get('/dashboard/relatorio')
 def endpoint_relatorio(
     periodo: str = Query(default='trimestre', pattern='^(mes|trimestre)$'),
