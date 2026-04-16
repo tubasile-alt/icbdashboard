@@ -60,13 +60,13 @@ export default function ExecutiveReportPage() {
   const handleDownloadPdf = useCallback(async () => {
     setPdfStatus('loading');
     try {
-      const res = await fetch(`${API_URL}/dashboard/relatorio?periodo=trimestre`);
+      const res = await fetch(`${API_URL}/dashboard/relatorio-executivo-pdf`);
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ICB_Relatorio_Executivo_Trimestral.pdf';
+      a.download = 'ICB_Painel_Executivo.pdf';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
