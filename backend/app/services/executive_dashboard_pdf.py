@@ -4,6 +4,7 @@ Replica o design de referência usando ReportLab canvas drawing.
 """
 import io
 import datetime as dt
+from pathlib import Path
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.units import mm
@@ -122,6 +123,30 @@ def bullet_circle(c, x, y, r, color):
     c.setFillColor(color)
     c.circle(x, y, r, fill=1, stroke=0)
     c.restoreState()
+
+
+def _draw_logo(c, x, y, w, h):
+    logo_path = Path('/home/runner/workspace/attached_assets/logo4_Logo_-_transplante_1776303355022.pdf')
+    if logo_path.exists():
+        try:
+            from pypdf import PdfReader
+            page = PdfReader(str(logo_path)).pages[0]
+            img_w = float(page.mediabox.width)
+            img_h = float(page.mediabox.height)
+            scale = min(w / img_w, h / img_h)
+            c.saveState()
+            c.translate(x, y)
+            c.scale(scale, scale)
+            c.doForm(c._doc.ID)  # no-op placeholder
+            c.restoreState()
+        except Exception:
+            c.setFont('Helvetica-Bold', 15)
+            c.setFillColor(CYAN)
+            c.drawString(x, y + 9, 'ICB')
+        return
+    c.setFont('Helvetica-Bold', 15)
+    c.setFillColor(CYAN)
+    c.drawString(x, y + 9, '≋ ICB')
 
 
 # ─── Main PDF generator ───────────────────────────────────────────────────────
