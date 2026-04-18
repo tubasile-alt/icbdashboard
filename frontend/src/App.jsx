@@ -703,12 +703,9 @@ export default function App() {
       <header style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(8,12,20,0.95)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${C.accent}, ${C.indigo})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, fontFamily: "Syne" }}>i</div>
-              <div>
-                <div style={{ fontSize: 13, fontFamily: "Syne", fontWeight: 800, color: C.text, lineHeight: 1 }}>ICB Dashboard</div>
-                <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>Visão Executiva</div>
-              </div>
+            <div>
+              <div style={{ fontSize: 13, fontFamily: "Syne", fontWeight: 800, color: C.text, lineHeight: 1 }}>ICB Dashboard</div>
+              <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>Visão Executiva</div>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
