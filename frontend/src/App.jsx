@@ -703,9 +703,9 @@ export default function App() {
       <header style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(8,12,20,0.95)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 10px" }}>
-            <div>
-              <div style={{ fontSize: 13, fontFamily: "Syne", fontWeight: 800, color: C.text, lineHeight: 1 }}>ICB Dashboard</div>
-              <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>Visão Executiva</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <img src="/icb-logo.png" alt="ICB" style={{ height: 22, width: "auto", display: "block" }} />
+              <div style={{ fontSize: 13, fontFamily: "Syne", fontWeight: 800, color: C.text, lineHeight: 1 }}>Dashboard</div>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
