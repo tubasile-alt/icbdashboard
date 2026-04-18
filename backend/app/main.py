@@ -18,6 +18,7 @@ from .api.dashboard_service import (
     get_alertas_dashboard,
     get_profissionais_dashboard,
     get_unidades_dashboard,
+    get_unidades_financeiro,
 )
 from .database import Base, SessionLocal, engine, get_db
 from .report_service import router as report_router
@@ -110,6 +111,11 @@ def dashboard_profissionais(filters: dict = Depends(_filters), db: Session = Dep
 @app.get("/dashboard/financeiro")
 def dashboard_financeiro(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
     return get_financeiro_dashboard(db, filters)
+
+
+@app.get("/dashboard/unidades-financeiro")
+def dashboard_unidades_financeiro(filters: dict = Depends(_filters), db: Session = Depends(get_db)):
+    return get_unidades_financeiro(db, filters)
 
 
 @app.get("/dashboard/fiscal")

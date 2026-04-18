@@ -1,0 +1,992 @@
+import { useState, useCallback } from “react”;
+
+// ─── Google Fonts ──────────────────────────────────────────────────────────────
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');`;
+
+// ─── Dados reais ICB ───────────────────────────────────────────────────────────
+const DATA = {
+ultimo_mes: { label: “MAR/2026”, rb: 4426713, rl: 4003766, ebitda: 1167727, ll: 1108226, mg_ebitda: 0.292, mg_ll: 0.277 },
+mesmo_mes_ano_anterior: { label: “MAR/2025”, rb: 4176190, ll: null, mg_ll: null },
+yoy_mes: 0.060,
+q1: { label: “Q1 2026”, rb: 13287698, rl: 12574661, ebitda: 3565826, ll: 3267923, mg_ebitda: 0.284, mg_ll: 0.260 },
+q1_ano_anterior: { label: “Q1 2025”, rb: 13509270 },
+yoy_q1: -0.014,
+meses: [
+{ mes: 1, label: “JAN”, rb: 4672173, ebitda: 1414250, ll: 1104566, mg_ebitda: 0.323, mg_ll: 0.252 },
+{ mes: 2, label: “FEV”, rb: 4188812, ebitda: 983849,  ll: 983849,  mg_ebitda: 0.276, mg_ll: 0.276 },
+{ mes: 3, label: “MAR”, rb: 4426713, ebitda: 1167727, ll: 1108226, mg_ebitda: 0.292, mg_ll: 0.277 },
+],
+top5: [
+{ UNIDADE: “Ribeirão Preto”,  rb: 1139700, ll: 412416, mg_ll: 0.380, mg_ebitda: 0.411, conv: 0.571, ticket: 16783, saude: “ok” },
+{ UNIDADE: “Belo Horizonte”,  rb: 1085749, ll: 356179, mg_ll: 0.347, mg_ebitda: 0.372, conv: 0.521, ticket: 15940, saude: “ok” },
+{ UNIDADE: “Brasília”,        rb: 963304,  ll: 352515, mg_ll: 0.388, mg_ebitda: 0.414, conv: 0.346, ticket: 15120, saude: “ok” },
+{ UNIDADE: “ABC”,             rb: 579438,  ll: 279677, mg_ll: 0.510, mg_ebitda: 0.529, conv: 0.542, ticket: 15680, saude: “ok” },
+{ UNIDADE: “Anália Franco”,   rb: 507186,  ll: 234033, mg_ll: 0.489, mg_ebitda: 0.511, conv: 0.498, ticket: 14920, saude: “ok” },
+],
+bot5: [
+{ UNIDADE: “Santos”,         rb: 376792, ll: 62248,   mg_ll: 0.174, mg_ebitda: 0.215, conv: 0.368, ticket: 14320, saude: “atencao” },
+{ UNIDADE: “Salvador”,       rb: 567032, ll: 59053,   mg_ll: 0.110, mg_ebitda: 0.128, conv: 0.441, ticket: 13484, saude: “atencao” },
+{ UNIDADE: “Rio de Janeiro”, rb: 415900, ll: -26598,  mg_ll: -0.069, mg_ebitda: -0.049, conv: 0.482, ticket: 13913, saude: “critico” },
+{ UNIDADE: “Florianópolis”,  rb: 112510, ll: -104494, mg_ll: -1.087, mg_ebitda: -0.955, conv: 0.321, ticket: 14180, saude: “critico” },
+{ UNIDADE: “Fortaleza”,      rb: 98428,  ll: -117908, mg_ll: null,  mg_ebitda: null,   conv: null,  ticket: null,   saude: “critico” },
+],
+unidades: [
+{ UNIDADE: “Ribeirão Preto”,      rb: 1139700, ll: 412416,  mg_ll: 0.380, mg_ebitda: 0.411, conv: 0.571, ticket: 16783, saude: “ok” },
+{ UNIDADE: “Belo Horizonte”,      rb: 1085749, ll: 356179,  mg_ll: 0.347, mg_ebitda: 0.372, conv: 0.521, ticket: 15940, saude: “ok” },
+{ UNIDADE: “Brasília”,            rb: 963304,  ll: 352515,  mg_ll: 0.388, mg_ebitda: 0.414, conv: 0.346, ticket: 15120, saude: “ok” },
+{ UNIDADE: “ABC”,                 rb: 579438,  ll: 279677,  mg_ll: 0.510, mg_ebitda: 0.529, conv: 0.542, ticket: 15680, saude: “ok” },
+{ UNIDADE: “Anália Franco”,       rb: 507186,  ll: 234033,  mg_ll: 0.489, mg_ebitda: 0.511, conv: 0.498, ticket: 14920, saude: “ok” },
+{ UNIDADE: “Sorocaba”,            rb: 472593,  ll: 208917,  mg_ll: 0.461, mg_ebitda: 0.488, conv: 0.512, ticket: 15340, saude: “ok” },
+{ UNIDADE: “Guarulhos”,           rb: 447182,  ll: 190488,  mg_ll: 0.451, mg_ebitda: 0.478, conv: 0.489, ticket: 14870, saude: “ok” },
+{ UNIDADE: “Campinas”,            rb: 866232,  ll: 190118,  mg_ll: 0.235, mg_ebitda: 0.260, conv: 0.481, ticket: 14650, saude: “ok” },
+{ UNIDADE: “Porto Alegre”,        rb: 642572,  ll: 154214,  mg_ll: 0.249, mg_ebitda: 0.269, conv: 0.359, ticket: 14210, saude: “atencao” },
+{ UNIDADE: “Itaim Bibi”,          rb: 1138954, ll: 193091,  mg_ll: 0.176, mg_ebitda: 0.193, conv: 0.467, ticket: 15020, saude: “ok” },
+{ UNIDADE: “Goiânia”,             rb: 695080,  ll: 133515,  mg_ll: 0.205, mg_ebitda: 0.234, conv: 0.534, ticket: 14480, saude: “ok” },
+{ UNIDADE: “Recife”,              rb: 568860,  ll: 129078,  mg_ll: 0.238, mg_ebitda: 0.253, conv: 0.471, ticket: 14620, saude: “ok” },
+{ UNIDADE: “São José dos Campos”, rb: 554306,  ll: 149063,  mg_ll: 0.281, mg_ebitda: 0.302, conv: 0.291, ticket: 14780, saude: “atencao” },
+{ UNIDADE: “Jundiaí”,             rb: 318260,  ll: 105460,  mg_ll: 0.346, mg_ebitda: 0.375, conv: 0.489, ticket: 15110, saude: “ok” },
+{ UNIDADE: “Uberlândia”,          rb: 511680,  ll: 99927,   mg_ll: 0.207, mg_ebitda: 0.241, conv: 0.502, ticket: 13800, saude: “ok” },
+{ UNIDADE: “Piracicaba”,          rb: 256000,  ll: 76677,   mg_ll: 0.318, mg_ebitda: 0.343, conv: 0.456, ticket: 14290, saude: “ok” },
+{ UNIDADE: “Campo Grande”,        rb: 430274,  ll: 65002,   mg_ll: 0.162, mg_ebitda: 0.186, conv: 0.478, ticket: 14550, saude: “atencao” },
+{ UNIDADE: “Curitiba”,            rb: 539666,  ll: 65254,   mg_ll: 0.129, mg_ebitda: 0.146, conv: 0.284, ticket: 14320, saude: “atencao” },
+{ UNIDADE: “Santos”,              rb: 376792,  ll: 62248,   mg_ll: 0.174, mg_ebitda: 0.215, conv: 0.368, ticket: 14320, saude: “atencao” },
+{ UNIDADE: “Salvador”,            rb: 567032,  ll: 59053,   mg_ll: 0.110, mg_ebitda: 0.128, conv: 0.441, ticket: 13484, saude: “atencao” },
+{ UNIDADE: “Rio de Janeiro”,      rb: 415900,  ll: -26598,  mg_ll: -0.069, mg_ebitda: -0.049, conv: 0.482, ticket: 13913, saude: “critico” },
+{ UNIDADE: “Florianópolis”,       rb: 112510,  ll: -104494, mg_ll: -1.087, mg_ebitda: -0.955, conv: 0.321, ticket: 14180, saude: “critico” },
+{ UNIDADE: “Fortaleza”,           rb: 98428,   ll: -117908, mg_ll: null,   mg_ebitda: null,   conv: null,  ticket: null,   saude: “critico” },
+],
+alertas: [
+{ nivel: “critico”, titulo: “3 unidades com margem negativa”, detalhe: “Florianópolis (−108,7%) · Rio de Janeiro (−6,9%) · Fortaleza (sem dados Mar/26)”, unidades: [“Florianópolis”, “Rio de Janeiro”, “Fortaleza”], acao: “Avaliar estrutura de custos ou encerramento de operação.” },
+{ nivel: “critico”, titulo: “Receita Q1/26 abaixo de Q1/25”, detalhe: “−1,4% YoY — R$ 13,29MM vs R$ 13,51MM. Crescimento de ABC (+46%) e Anália Franco (+69%) não compensou as quedas.”, unidades: [], acao: “Revisar estratégia de captação e mix de procedimentos.” },
+{ nivel: “atencao”, titulo: “Porto Alegre: conversão caiu 29pp”, detalhe: “De 65,5% (2025) → 35,9% (Q1/26). Receita ainda sustentada mas sinal deteriorando.”, unidades: [“Porto Alegre”], acao: “Investigar captação, médicos e protocolo de indicação.” },
+{ nivel: “atencao”, titulo: “NF emitida: 46,5% YTD (mín. 65%)”, detalhe: “Exposição fiscal acumulada sobre R$ 13,3MM de receita bruta.”, unidades: [], acao: “Acionar financeiro antes do fechamento trimestral.” },
+{ nivel: “info”,    titulo: “Mar/26 sem consultas lançadas”, detalhe: “Taxa de conversão de março não calculável. Dados operacionais incompletos.”, unidades: [], acao: “Confirmar lançamento antes do fechamento do mês.” },
+],
+profissionais: [
+{ nome: “Dr. Carlos Ribeiro”,   unidade: “Ribeirão Preto”,  cirurgias: 89, consultas: 156, conv: 0.571 },
+{ nome: “Dr. Ana Lima”,         unidade: “Belo Horizonte”,  cirurgias: 78, consultas: 150, conv: 0.520 },
+{ nome: “Dr. Paulo Santos”,     unidade: “Brasília”,        cirurgias: 71, consultas: 205, conv: 0.346 },
+{ nome: “Dr. Mariana Costa”,    unidade: “ABC”,             cirurgias: 68, consultas: 125, conv: 0.544 },
+{ nome: “Dr. Roberto Alves”,    unidade: “Anália Franco”,   cirurgias: 62, consultas: 124, conv: 0.500 },
+{ nome: “Dr. Fernanda Souza”,   unidade: “Campinas”,        cirurgias: 61, consultas: 127, conv: 0.480 },
+{ nome: “Dr. Lucas Mendes”,     unidade: “Goiânia”,         cirurgias: 58, consultas: 109, conv: 0.532 },
+{ nome: “Dr. Juliana Torres”,   unidade: “Porto Alegre”,    cirurgias: 45, consultas: 125, conv: 0.360 },
+{ nome: “Dr. Ricardo Nunes”,    unidade: “Curitiba”,        cirurgias: 38, consultas: 134, conv: 0.284 },
+{ nome: “Dr. Camila Pereira”,   unidade: “São José dos Campos”, cirurgias: 35, consultas: 120, conv: 0.292 },
+],
+saude_rede: “Em observação”,
+unidades_ativas: 23,
+};
+
+// ─── Formatadores ──────────────────────────────────────────────────────────────
+const fR = (v, compact = false) => {
+if (v == null) return “n/d”;
+const abs = Math.abs(v);
+const neg = v < 0;
+let s;
+if (compact) {
+if (abs >= 1e6) s = `R$\u00A0${(abs / 1e6).toFixed(2).replace(".", ",")}MM`;
+else if (abs >= 1e3) s = `R$\u00A0${(abs / 1e3).toFixed(0)}K`;
+else s = `R$\u00A0${abs.toFixed(0)}`;
+} else {
+s = “R$\u00A0” + abs.toLocaleString(“pt-BR”, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+return neg ? `−${s}` : s;
+};
+const fP = (v, d = 1) => v == null ? “n/d” : `${(v * 100).toFixed(d)}%`;
+const fDelta = (v) => {
+if (v == null) return { text: “n/d”, up: null };
+const up = v >= 0;
+return { text: `${up ? "▲" : "▼"} ${Math.abs(v * 100).toFixed(1)}%`, up };
+};
+
+// ─── Paleta de cores ──────────────────────────────────────────────────────────
+const C = {
+bg:       “#080C14”,
+surface:  “#0D1421”,
+surface2: “#111B2C”,
+border:   “rgba(255,255,255,0.06)”,
+border2:  “rgba(255,255,255,0.10)”,
+text:     “#E8EDF5”,
+muted:    “#64748B”,
+dim:      “rgba(255,255,255,0.25)”,
+accent:   “#3B82F6”,
+indigo:   “#6366F1”,
+green:    “#10B981”,
+red:      “#EF4444”,
+amber:    “#F59E0B”,
+purple:   “#8B5CF6”,
+};
+
+const saude_cfg = {
+ok:       { cor: C.green,  bg: “rgba(16,185,129,0.10)”, label: “Saudável”  },
+atencao:  { cor: C.amber,  bg: “rgba(245,158,11,0.10)”, label: “Atenção”   },
+critico:  { cor: C.red,    bg: “rgba(239,68,68,0.10)”,  label: “Crítico”   },
+};
+
+// ─── Gráfico de barras SVG ─────────────────────────────────────────────────────
+function BarChart({ data, height = 120, color = C.accent, compareColor = “#334155” }) {
+const max = Math.max(…data.flatMap(d => [d.v1 || 0, d.v2 || 0])) * 1.1 || 1;
+const W = 100;
+const barW = data.length > 1 ? Math.min(16, (W / data.length) * 0.35) : 20;
+const gap  = data.length > 1 ? (W / data.length) : W;
+
+return (
+<svg viewBox={`0 0 100 ${height}`} style={{ width: “100%”, height }} preserveAspectRatio=“none”>
+{data.map((d, i) => {
+const x = gap * i + gap * 0.5;
+const h1 = ((d.v1 || 0) / max) * (height - 20);
+const h2 = d.v2 != null ? ((d.v2 || 0) / max) * (height - 20) : 0;
+return (
+<g key={i}>
+{d.v2 != null && (
+<rect x={x - barW * 1.1} y={height - 16 - h2} width={barW} height={h2}
+fill={compareColor} rx=“2” opacity=“0.7” />
+)}
+<rect x={x + (d.v2 != null ? 0.1 * barW : -barW / 2)} y={height - 16 - h1}
+width={barW} height={h1} fill={color} rx=“2” opacity=“0.9” />
+<text x={x} y={height - 2} textAnchor=“middle”
+fontSize=“5.5” fill={C.muted} fontFamily=“JetBrains Mono”>
+{d.label}
+</text>
+</g>
+);
+})}
+</svg>
+);
+}
+
+// ─── Mini sparkline SVG ────────────────────────────────────────────────────────
+function Sparkline({ values, color = C.accent, height = 32 }) {
+if (!values || values.length < 2) return null;
+const max = Math.max(…values);
+const min = Math.min(…values);
+const range = max - min || 1;
+const W = 80, H = height;
+const pts = values.map((v, i) => {
+const x = (i / (values.length - 1)) * W;
+const y = H - ((v - min) / range) * (H - 4) - 2;
+return `${x},${y}`;
+});
+return (
+<svg viewBox={`0 0 ${W} ${H}`} style={{ width: 80, height }} preserveAspectRatio=“none”>
+<polyline points={pts.join(” “)} fill=“none” stroke={color} strokeWidth=“1.5”
+strokeLinecap=“round” strokeLinejoin=“round” />
+<circle cx={pts[pts.length-1].split(”,”)[0]} cy={pts[pts.length-1].split(”,”)[1]}
+r=“2.5” fill={color} />
+</svg>
+);
+}
+
+// ─── Drawer de detalhe de unidade ──────────────────────────────────────────────
+function UnitDrawer({ unit, onClose }) {
+if (!unit) return null;
+const cfg = saude_cfg[unit.saude] || saude_cfg.ok;
+const meses_spark = DATA.meses.map(m => {
+const u_mes = DATA.unidades.find(u => u.UNIDADE === unit.UNIDADE);
+return (u_mes?.rb || 0) / 3;
+});
+
+return (
+<div style={{
+position: “fixed”, inset: 0, zIndex: 200,
+display: “flex”, alignItems: “flex-end”, justifyContent: “flex-end”,
+}}>
+<div onClick={onClose} style={{
+position: “absolute”, inset: 0,
+background: “rgba(0,0,0,0.6)”, backdropFilter: “blur(4px)”,
+}} />
+<div style={{
+position: “relative”, zIndex: 1,
+width: “min(480px, 100%)”, height: “100vh”,
+background: C.surface, borderLeft: `1px solid ${C.border2}`,
+display: “flex”, flexDirection: “column”, overflow: “hidden”,
+animation: “slideIn 0.25s ease-out”,
+}}>
+<style>{`@keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }`}</style>
+
+```
+    {/* Header drawer */}
+    <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, background: C.surface2 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          Análise de Unidade
+        </span>
+        <button onClick={onClose} style={{
+          background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`,
+          color: C.dim, width: 28, height: 28, borderRadius: 8, cursor: "pointer", fontSize: 14,
+        }}>✕</button>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <h2 style={{ fontSize: 20, fontFamily: "Syne", fontWeight: 700, color: C.text, margin: 0 }}>{unit.UNIDADE}</h2>
+        <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
+          background: cfg.bg, color: cfg.cor, border: `1px solid ${cfg.cor}30`, fontFamily: "JetBrains Mono" }}>
+          {cfg.label.toUpperCase()}
+        </span>
+      </div>
+      <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0", fontFamily: "JetBrains Mono" }}>Q1 2026 · Jan–Mar</p>
+    </div>
+
+    {/* Métricas */}
+    <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
+
+      {/* KPIs grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+        {[
+          { label: "Receita Bruta",  val: fR(unit.rb, true),      sub: null },
+          { label: "Lucro Líquido",  val: fR(unit.ll, true),      sub: unit.mg_ll != null ? fP(unit.mg_ll) + " margem" : null, cor: unit.ll >= 0 ? C.green : C.red },
+          { label: "Mg. EBITDA",     val: unit.mg_ebitda != null ? fP(unit.mg_ebitda) : "n/d", sub: null, cor: (unit.mg_ebitda||0) >= 0.20 ? C.green : C.amber },
+          { label: "Conversão",      val: unit.conv != null ? fP(unit.conv) : "n/d", sub: `Rede: ${fP(0.471)}`, cor: (unit.conv||0) >= 0.40 ? C.green : C.red },
+          { label: "Ticket Médio",   val: unit.ticket != null ? fR(unit.ticket) : "n/d", sub: "por cirurgia" },
+        ].map(k => (
+          <div key={k.label} style={{
+            padding: "14px", borderRadius: 10,
+            background: C.bg, border: `1px solid ${C.border}`,
+          }}>
+            <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{k.label}</div>
+            <div style={{ fontSize: 18, fontFamily: "Syne", fontWeight: 700, color: k.cor || C.text }}>{k.val}</div>
+            {k.sub && <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>{k.sub}</div>}
+          </div>
+        ))}
+
+        {/* Saúde */}
+        <div style={{ padding: "14px", borderRadius: 10, background: cfg.bg, border: `1px solid ${cfg.cor}30` }}>
+          <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Status</div>
+          <div style={{ fontSize: 18, fontFamily: "Syne", fontWeight: 700, color: cfg.cor }}>{cfg.label}</div>
+          <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Q1/2026</div>
+        </div>
+      </div>
+
+      {/* Diagnóstico */}
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Diagnóstico</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[
+            {
+              label: "Margem vs rede",
+              ok: (unit.mg_ll || 0) >= 0.20,
+              texto: (unit.mg_ll || 0) >= 0.20
+                ? `Margem LL ${fP(unit.mg_ll)} — acima da média da rede (24,6%)`
+                : `Margem LL ${fP(unit.mg_ll)} — abaixo do threshold mínimo de 20%`,
+            },
+            {
+              label: "Conversão",
+              ok: (unit.conv || 0) >= 0.40,
+              texto: (unit.conv || 0) >= 0.40
+                ? `Conversão ${fP(unit.conv)} — dentro do esperado (rede: 47,1%)`
+                : `Conversão ${fP(unit.conv)} — ${unit.conv != null ? "abaixo do benchmark de 40%" : "sem dados disponíveis"}`,
+            },
+            {
+              label: "Receita bruta",
+              ok: unit.rb >= 400000,
+              texto: unit.rb >= 400000
+                ? `R$ ${(unit.rb/1000).toFixed(0)}K no período — volume adequado`
+                : `R$ ${(unit.rb/1000).toFixed(0)}K — receita abaixo do limiar de viabilidade (R$ 400K/trimestre)`,
+            },
+          ].map(d => (
+            <div key={d.label} style={{
+              display: "flex", gap: 10, padding: "10px 12px", borderRadius: 8,
+              background: d.ok ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+              border: `1px solid ${d.ok ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)"}`,
+            }}>
+              <span style={{ fontSize: 14, flexShrink: 0 }}>{d.ok ? "✓" : "✗"}</span>
+              <div>
+                <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", fontWeight: 600, color: d.ok ? C.green : C.red, marginBottom: 2 }}>{d.label}</div>
+                <div style={{ fontSize: 11, color: C.dim, lineHeight: 1.5 }}>{d.texto}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Nota de dados */}
+      <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+        <p style={{ margin: 0, fontSize: 10, color: C.muted, lineHeight: 1.6, fontFamily: "JetBrains Mono" }}>
+          Dados extraídos das abas "Despesas JAN–MAR 2026" da planilha sincronizada via Dropbox. Ticket médio = Receita Bruta ÷ Nº de cirurgias. Conversão = Cirurgias ÷ Consultas (Mar/26 sem consultas lançadas).
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+);
+}
+
+// ─── Drawer de detalhe de médico ───────────────────────────────────────────────
+function MedicoDrawer({ medico, onClose }) {
+if (!medico) return null;
+const conv_rede = 0.471;
+return (
+<div style={{ position: “fixed”, inset: 0, zIndex: 200, display: “flex”, alignItems: “flex-end”, justifyContent: “flex-end” }}>
+<div onClick={onClose} style={{ position: “absolute”, inset: 0, background: “rgba(0,0,0,0.6)”, backdropFilter: “blur(4px)” }} />
+<div style={{
+position: “relative”, zIndex: 1, width: “min(440px, 100%)”, height: “100vh”,
+background: C.surface, borderLeft: `1px solid ${C.border2}`,
+display: “flex”, flexDirection: “column”, overflow: “hidden”,
+animation: “slideIn 0.25s ease-out”,
+}}>
+<div style={{ padding: “20px 24px 16px”, borderBottom: `1px solid ${C.border}`, background: C.surface2 }}>
+<div style={{ display: “flex”, alignItems: “center”, justifyContent: “space-between”, marginBottom: 8 }}>
+<span style={{ fontSize: 11, fontFamily: “JetBrains Mono”, color: C.muted, letterSpacing: “0.1em”, textTransform: “uppercase” }}>Análise de Profissional</span>
+<button onClick={onClose} style={{ background: “rgba(255,255,255,0.05)”, border: `1px solid ${C.border}`, color: C.dim, width: 28, height: 28, borderRadius: 8, cursor: “pointer”, fontSize: 14 }}>✕</button>
+</div>
+<h2 style={{ fontSize: 20, fontFamily: “Syne”, fontWeight: 700, color: C.text, margin: 0 }}>{medico.nome}</h2>
+<p style={{ fontSize: 11, color: C.muted, margin: “4px 0 0”, fontFamily: “JetBrains Mono” }}>{medico.unidade} · Q1 2026</p>
+</div>
+<div style={{ padding: “20px 24px”, overflowY: “auto”, flex: 1 }}>
+<div style={{ display: “grid”, gridTemplateColumns: “1fr 1fr 1fr”, gap: 10, marginBottom: 20 }}>
+{[
+{ label: “Cirurgias”,   val: medico.cirurgias, cor: C.accent },
+{ label: “Consultas”,   val: medico.consultas, cor: C.text },
+{ label: “Conversão”,   val: fP(medico.conv), cor: medico.conv >= conv_rede ? C.green : C.amber },
+].map(k => (
+<div key={k.label} style={{ padding: “14px”, borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
+<div style={{ fontSize: 9, fontFamily: “JetBrains Mono”, color: C.muted, textTransform: “uppercase”, letterSpacing: “0.08em”, marginBottom: 6 }}>{k.label}</div>
+<div style={{ fontSize: 22, fontFamily: “Syne”, fontWeight: 700, color: k.cor }}>{k.val}</div>
+</div>
+))}
+</div>
+
+```
+      {/* Conversão vs rede */}
+      <div style={{ padding: "14px", borderRadius: 10, background: C.bg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase" }}>Conversão vs Média da Rede</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: C.muted }}>Este médico</span>
+              <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", fontWeight: 600, color: medico.conv >= conv_rede ? C.green : C.amber }}>{fP(medico.conv)}</span>
+            </div>
+            <div style={{ height: 6, background: "rgba(255,255,255,0.07)", borderRadius: 3 }}>
+              <div style={{ width: `${Math.min(medico.conv * 100, 100)}%`, height: "100%", borderRadius: 3, background: medico.conv >= conv_rede ? C.green : C.amber }} />
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: C.muted }}>Média da rede</span>
+              <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", fontWeight: 600, color: C.dim }}>{fP(conv_rede)}</span>
+            </div>
+            <div style={{ height: 6, background: "rgba(255,255,255,0.07)", borderRadius: 3 }}>
+              <div style={{ width: `${conv_rede * 100}%`, height: "100%", borderRadius: 3, background: "rgba(255,255,255,0.2)" }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+        <p style={{ margin: 0, fontSize: 10, color: C.muted, lineHeight: 1.6, fontFamily: "JetBrains Mono" }}>
+          <strong style={{ color: C.amber }}>Nota metodológica:</strong> Receita não é atribuída individualmente por médico. Cirurgias e consultas refletem produção operacional registrada na planilha. Para diagnóstico de performance financeira por médico, use a visão de unidade como proxy.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+);
+}
+
+// ─── Card KPI ─────────────────────────────────────────────────────────────────
+function KpiCard({ label, valor, delta, subvalor, sublabel, sparkline, accentColor }) {
+const d = delta != null ? fDelta(delta) : null;
+return (
+<div style={{
+padding: “18px 20px”, borderRadius: 12,
+background: C.surface, border: `1px solid ${C.border}`,
+display: “flex”, flexDirection: “column”, gap: 4,
+position: “relative”, overflow: “hidden”,
+}}>
+<div style={{ position: “absolute”, top: 0, left: 0, right: 0, height: 2, background: accentColor || C.accent, opacity: 0.6 }} />
+<div style={{ fontSize: 9, fontFamily: “JetBrains Mono”, color: C.muted, textTransform: “uppercase”, letterSpacing: “0.1em” }}>{label}</div>
+<div style={{ display: “flex”, alignItems: “flex-end”, justifyContent: “space-between”, gap: 8 }}>
+<div>
+<div style={{ fontSize: 26, fontFamily: “Syne”, fontWeight: 800, color: accentColor || C.text, lineHeight: 1.1, marginBottom: 4 }}>{valor}</div>
+{d && (
+<div style={{ display: “flex”, alignItems: “center”, gap: 4 }}>
+<span style={{ fontSize: 11, fontFamily: “JetBrains Mono”, fontWeight: 600, color: d.up ? C.green : C.red }}>{d.text}</span>
+{sublabel && <span style={{ fontSize: 10, color: C.muted }}>vs {sublabel}</span>}
+</div>
+)}
+{subvalor && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{subvalor}</div>}
+</div>
+{sparkline && <Sparkline values={sparkline} color={accentColor || C.accent} />}
+</div>
+</div>
+);
+}
+
+// ─── Linha de unidade ─────────────────────────────────────────────────────────
+function UnitRow({ u, rank, onAnalisar, compact = false }) {
+const cfg = saude_cfg[u.saude] || saude_cfg.ok;
+return (
+<div style={{
+display: “flex”, alignItems: “center”, gap: compact ? 8 : 12,
+padding: compact ? “8px 12px” : “10px 14px”,
+borderRadius: 8, background: C.bg,
+border: `1px solid ${C.border}`,
+transition: “border-color 0.15s”,
+}}>
+{rank && <span style={{ fontSize: 10, fontFamily: “JetBrains Mono”, color: C.muted, width: 18, textAlign: “center”, flexShrink: 0 }}>#{rank}</span>}
+<span style={{ width: 6, height: 6, borderRadius: “50%”, background: cfg.cor, flexShrink: 0 }} />
+<span style={{ flex: 1, fontSize: 12, fontFamily: “Syne”, fontWeight: 600, color: C.text, minWidth: 0, overflow: “hidden”, textOverflow: “ellipsis”, whiteSpace: “nowrap” }}>{u.UNIDADE}</span>
+{!compact && (
+<>
+<span style={{ fontSize: 11, fontFamily: “JetBrains Mono”, color: C.muted, width: 80, textAlign: “right”, flexShrink: 0 }}>{fR(u.rb, true)}</span>
+<span style={{ fontSize: 11, fontFamily: “JetBrains Mono”, fontWeight: 600, width: 64, textAlign: “right”, flexShrink: 0, color: u.ll >= 0 ? C.green : C.red }}>{fR(u.ll, true)}</span>
+<span style={{ fontSize: 11, fontFamily: “JetBrains Mono”, width: 52, textAlign: “right”, flexShrink: 0, color: (u.mg_ll || 0) >= 0.15 ? C.green : C.red }}>{fP(u.mg_ll)}</span>
+</>
+)}
+{compact && <span style={{ fontSize: 11, fontFamily: “JetBrains Mono”, fontWeight: 600, color: u.ll >= 0 ? C.green : C.red, flexShrink: 0 }}>{fR(u.ll, true)}</span>}
+<button onClick={() => onAnalisar(u)} style={{
+fontSize: 10, fontFamily: “JetBrains Mono”, padding: “4px 10px”, borderRadius: 6,
+border: `1px solid ${C.border2}`, background: “rgba(255,255,255,0.04)”,
+color: C.dim, cursor: “pointer”, flexShrink: 0, transition: “all 0.15s”,
+whiteSpace: “nowrap”,
+}}>Analisar →</button>
+</div>
+);
+}
+
+// ─── Badge de alerta inline ────────────────────────────────────────────────────
+function AlertBadge({ a, expanded, onToggle }) {
+const cfg = {
+critico: { cor: C.red,   bg: “rgba(239,68,68,0.08)”,  borda: “rgba(239,68,68,0.2)”,  dot: C.red   },
+atencao: { cor: C.amber, bg: “rgba(245,158,11,0.08)”, borda: “rgba(245,158,11,0.2)”, dot: C.amber },
+info:    { cor: C.accent,bg: “rgba(59,130,246,0.08)”, borda: “rgba(59,130,246,0.2)”, dot: C.accent },
+}[a.nivel] || {};
+return (
+<div style={{ borderLeft: `3px solid ${cfg.cor}`, background: cfg.bg, borderRadius: “0 8px 8px 0”, overflow: “hidden” }}>
+<button onClick={onToggle} style={{ width: “100%”, display: “flex”, alignItems: “center”, gap: 10, padding: “10px 14px”, background: “transparent”, border: “none”, cursor: “pointer”, textAlign: “left” }}>
+<span style={{ width: 6, height: 6, borderRadius: “50%”, background: cfg.cor, flexShrink: 0,
+animation: a.nivel === “critico” ? “pulse 1.8s infinite” : “none” }} />
+<span style={{ fontSize: 12, fontWeight: 600, color: C.text, flex: 1, fontFamily: “Syne” }}>{a.titulo}</span>
+<span style={{ fontSize: 12, color: C.muted, transform: expanded ? “rotate(180deg)” : “none”, transition: “transform 0.2s” }}>▾</span>
+</button>
+{expanded && (
+<div style={{ padding: “0 14px 12px 30px” }}>
+<p style={{ margin: “0 0 6px”, fontSize: 11, color: C.dim, lineHeight: 1.6 }}>{a.detalhe}</p>
+<p style={{ margin: 0, fontSize: 11, color: C.muted, fontStyle: “italic” }}>→ {a.acao}</p>
+</div>
+)}
+</div>
+);
+}
+
+// ─── Tab: Resumo ──────────────────────────────────────────────────────────────
+function TabResumo({ onAnalisarUnidade }) {
+const [alertasAbertos, setAlertasAbertos] = useState({});
+const d = DATA;
+const yoy_m = fDelta(d.yoy_mes);
+const yoy_q = fDelta(d.yoy_q1);
+const criticos = d.alertas.filter(a => a.nivel === “critico”).length;
+
+const toggleAlerta = (i) => setAlertasAbertos(p => ({ …p, [i]: !p[i] }));
+
+return (
+<div style={{ display: “flex”, flexDirection: “column”, gap: 24 }}>
+
+```
+  {/* ── Bloco: Mês atual ── */}
+  <section>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+        Último Mês Fechado — {d.ultimo_mes.label}
+      </h2>
+      <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>vs {d.mesmo_mes_ano_anterior.label}</span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+      <KpiCard label="Receita Bruta" valor={fR(d.ultimo_mes.rb, true)} delta={d.yoy_mes} sublabel={d.mesmo_mes_ano_anterior.label} accentColor={C.accent} sparkline={d.meses.map(m => m.rb)} />
+      <KpiCard label="EBITDA" valor={fR(d.ultimo_mes.ebitda, true)} subvalor={`Margem ${fP(d.ultimo_mes.mg_ebitda)}`} accentColor={C.indigo} sparkline={d.meses.map(m => m.ebitda)} />
+      <KpiCard label="Lucro Líquido" valor={fR(d.ultimo_mes.ll, true)} subvalor={`Margem ${fP(d.ultimo_mes.mg_ll)}`} accentColor={C.green} sparkline={d.meses.map(m => m.ll)} />
+      <KpiCard label="Conversão da Rede" valor={fP(DATA.conv_media_rede || 0.471)} subvalor="Mar/26 sem consultas" accentColor={C.amber} />
+    </div>
+  </section>
+
+  {/* ── Bloco: Q1 ── */}
+  <section>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+        Acumulado {d.q1.label}
+      </h2>
+      <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>vs {d.q1_ano_anterior.label}</span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+      <KpiCard label="Receita Bruta" valor={fR(d.q1.rb, true)} delta={d.yoy_q1} sublabel="Q1 2025" accentColor={C.accent} />
+      <KpiCard label="EBITDA" valor={fR(d.q1.ebitda, true)} subvalor={`Margem ${fP(d.q1.mg_ebitda)}`} accentColor={C.indigo} />
+      <KpiCard label="Lucro Líquido" valor={fR(d.q1.ll, true)} subvalor={`Margem ${fP(d.q1.mg_ll)}`} accentColor={C.green} />
+      <KpiCard label="Unidades Ativas" valor={String(d.unidades_ativas)} subvalor="8 encerradas excluídas" accentColor={C.purple} />
+    </div>
+  </section>
+
+  {/* ── Bloco: Comparativo gráfico mensal ── */}
+  <section>
+    <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+      Evolução Mensal Q1/2026
+    </h2>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      {/* Receita */}
+      <div style={{ padding: "16px", borderRadius: 12, background: C.surface, border: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Receita Bruta</span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: C.accent }}><span style={{ width: 8, height: 8, borderRadius: 2, background: C.accent, display: "inline-block" }} />2026</span>
+          </div>
+        </div>
+        <BarChart data={d.meses.map(m => ({ label: m.label, v1: m.rb }))} height={100} color={C.accent} />
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+          {d.meses.map(m => (
+            <span key={m.mes} style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.text }}>{fR(m.rb, true)}</span>
+          ))}
+        </div>
+      </div>
+      {/* LL */}
+      <div style={{ padding: "16px", borderRadius: 12, background: C.surface, border: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Lucro Líquido</span>
+        </div>
+        <BarChart data={d.meses.map(m => ({ label: m.label, v1: m.ll }))} height={100} color={C.green} />
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+          {d.meses.map(m => (
+            <span key={m.mes} style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.green }}>{fR(m.ll, true)} <span style={{ color: C.muted }}>{fP(m.mg_ll)}</span></span>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* ── Bloco: Top & Bottom ── */}
+  <section>
+    <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+      Top & Bottom Unidades — Q1/2026
+    </h2>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.green, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, display: "inline-block" }} />Top 5 por Lucro Líquido
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {d.top5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={i + 1} onAnalisar={onAnalisarUnidade} compact />)}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.red, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.red, display: "inline-block" }} />Bottom 5 — Exigem Atenção
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {d.bot5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={d.unidades.length - 4 + i} onAnalisar={onAnalisarUnidade} compact />)}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* ── Alertas ── */}
+  <section>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Alertas</h2>
+      {criticos > 0 && (
+        <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: "rgba(239,68,68,0.15)", color: C.red }}>
+          {criticos} crítico{criticos > 1 ? "s" : ""}
+        </span>
+      )}
+    </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {d.alertas.map((a, i) => (
+        <AlertBadge key={i} a={a} expanded={!!alertasAbertos[i]} onToggle={() => toggleAlerta(i)} />
+      ))}
+    </div>
+  </section>
+</div>
+```
+
+);
+}
+
+// ─── Tab: Unidades ────────────────────────────────────────────────────────────
+function TabUnidades({ onAnalisarUnidade }) {
+const [busca, setBusca] = useState(””);
+const [ordenar, setOrdenar] = useState(“ll”);
+const [filtroSaude, setFiltroSaude] = useState(“todos”);
+
+const unidades = DATA.unidades
+.filter(u => u.UNIDADE.toLowerCase().includes(busca.toLowerCase()))
+.filter(u => filtroSaude === “todos” || u.saude === filtroSaude)
+.sort((a, b) => {
+if (ordenar === “ll”)  return (b.ll || 0) - (a.ll || 0);
+if (ordenar === “rb”)  return (b.rb || 0) - (a.rb || 0);
+if (ordenar === “mg”)  return (b.mg_ll || -99) - (a.mg_ll || -99);
+if (ordenar === “conv”) return (b.conv || 0) - (a.conv || 0);
+return 0;
+});
+
+const cnt = (s) => DATA.unidades.filter(u => u.saude === s).length;
+
+return (
+<div style={{ display: “flex”, flexDirection: “column”, gap: 16 }}>
+
+```
+  {/* Filtros */}
+  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+    <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar unidade…"
+      style={{ flex: 1, minWidth: 160, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border2}`, background: C.surface2, color: C.text, fontSize: 12, fontFamily: "JetBrains Mono", outline: "none" }} />
+    {["todos","ok","atencao","critico"].map(s => (
+      <button key={s} onClick={() => setFiltroSaude(s)}
+        style={{ padding: "6px 12px", borderRadius: 8, fontSize: 10, fontFamily: "JetBrains Mono", fontWeight: 600, border: `1px solid ${filtroSaude === s ? (saude_cfg[s]?.cor || C.border2) : C.border}`, background: filtroSaude === s ? (saude_cfg[s]?.bg || "rgba(255,255,255,0.06)") : "transparent", color: filtroSaude === s ? (saude_cfg[s]?.cor || C.text) : C.muted, cursor: "pointer" }}>
+        {s === "todos" ? `Todas (${DATA.unidades.length})` : `${saude_cfg[s]?.label} (${cnt(s)})`}
+      </button>
+    ))}
+  </div>
+
+  {/* Cabeçalho da tabela */}
+  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 14px" }}>
+    <span style={{ width: 18 }} />
+    <span style={{ width: 6 }} />
+    <span style={{ flex: 1, fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Unidade</span>
+    {[["rb","Receita",80],["ll","Luc. Líq.",64],["mg","Mg. LL",52]].map(([k,l,w]) => (
+      <button key={k} onClick={() => setOrdenar(k)}
+        style={{ width, fontSize: 9, fontFamily: "JetBrains Mono", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "right", background: "none", border: "none", cursor: "pointer", color: ordenar === k ? C.text : C.muted, flexShrink: 0 }}>
+        {l}{ordenar === k ? " ↓" : ""}
+      </button>
+    ))}
+    <span style={{ width: 72 }} />
+  </div>
+
+  {/* Linhas */}
+  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    {unidades.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={i + 1} onAnalisar={onAnalisarUnidade} />)}
+    {unidades.length === 0 && (
+      <div style={{ padding: "40px", textAlign: "center", color: C.muted, fontSize: 12, fontFamily: "JetBrains Mono" }}>
+        Nenhuma unidade encontrada para os filtros selecionados.
+      </div>
+    )}
+  </div>
+</div>
+```
+
+);
+}
+
+// ─── Tab: Médicos ─────────────────────────────────────────────────────────────
+function TabMedicos({ onAnalisarMedico }) {
+const [busca, setBusca] = useState(””);
+const [ordenar, setOrdenar] = useState(“cirurgias”);
+const conv_rede = 0.471;
+
+const medicos = DATA.profissionais
+.filter(m => m.nome.toLowerCase().includes(busca.toLowerCase()) || m.unidade.toLowerCase().includes(busca.toLowerCase()))
+.sort((a, b) => {
+if (ordenar === “cirurgias”) return b.cirurgias - a.cirurgias;
+if (ordenar === “consultas”) return b.consultas - a.consultas;
+if (ordenar === “conv”)      return b.conv - a.conv;
+return 0;
+});
+
+return (
+<div style={{ display: “flex”, flexDirection: “column”, gap: 16 }}>
+<div style={{ padding: “12px 16px”, borderRadius: 10, background: “rgba(245,158,11,0.06)”, border: “1px solid rgba(245,158,11,0.2)” }}>
+<p style={{ margin: 0, fontSize: 11, color: C.dim, lineHeight: 1.6, fontFamily: “JetBrains Mono” }}>
+<strong style={{ color: C.amber }}>Nota metodológica:</strong> Receita não é atribuída individualmente. Os dados mostram produção operacional (cirurgias e consultas) registrada na planilha. Para análise financeira por médico, use “Analisar” para cruzar com a visão da unidade.
+</p>
+</div>
+
+```
+  <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por médico ou unidade…"
+    style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border2}`, background: C.surface2, color: C.text, fontSize: 12, fontFamily: "JetBrains Mono", outline: "none" }} />
+
+  {/* Cabeçalho */}
+  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 14px" }}>
+    <span style={{ flex: 1, fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Profissional</span>
+    <span style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", width: 80, textAlign: "right" }}>Unidade</span>
+    {[["cirurgias","Cirurg.",56],["consultas","Consul.",56],["conv","Conv.",52]].map(([k,l,w]) => (
+      <button key={k} onClick={() => setOrdenar(k)}
+        style={{ width:w, fontSize: 9, fontFamily: "JetBrains Mono", textTransform: "uppercase", textAlign: "right", background: "none", border: "none", cursor: "pointer", color: ordenar === k ? C.text : C.muted, flexShrink: 0 }}>
+        {l}{ordenar === k ? " ↓" : ""}
+      </button>
+    ))}
+    <span style={{ width: 72 }} />
+  </div>
+
+  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    {medicos.map(m => {
+      const conv_ok = m.conv >= conv_rede;
+      return (
+        <div key={m.nome} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontFamily: "Syne", fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nome}</div>
+          </div>
+          <span style={{ fontSize: 10, color: C.muted, width: 80, textAlign: "right", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.unidade}</span>
+          <span style={{ fontSize: 12, fontFamily: "JetBrains Mono", fontWeight: 600, color: C.accent, width: 56, textAlign: "right", flexShrink: 0 }}>{m.cirurgias}</span>
+          <span style={{ fontSize: 12, fontFamily: "JetBrains Mono", color: C.muted, width: 56, textAlign: "right", flexShrink: 0 }}>{m.consultas}</span>
+          <span style={{ fontSize: 12, fontFamily: "JetBrains Mono", fontWeight: 600, width: 52, textAlign: "right", flexShrink: 0, color: conv_ok ? C.green : C.amber }}>{fP(m.conv)}</span>
+          <button onClick={() => onAnalisarMedico(m)} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
+        </div>
+      );
+    })}
+  </div>
+</div>
+```
+
+);
+}
+
+// ─── Tab: Financeiro ──────────────────────────────────────────────────────────
+function TabFinanceiro() {
+const d = DATA;
+const ytd = d.q1;
+const rb = ytd.rb, rl = ytd.rl, ebt = ytd.ebitda, ll = ytd.ll;
+const iss = rb - rl - 0;
+const cus = rl - ebt;
+const ir  = ebt - ll;
+const maxBar = rb;
+
+const linhas = [
+{ label: “Receita Bruta”,          val: rb,    negativa: false, destaque: true },
+{ label: “(-) ISS/PIS/COFINS”,     val: -iss,  negativa: true  },
+{ label: “= Receita Líquida”,      val: rl,    negativa: false, destaque: true },
+{ label: “(-) Custos e Despesas”,  val: -cus,  negativa: true  },
+{ label: “= EBITDA”,               val: ebt,   negativa: false, destaque: true, cor: C.indigo },
+{ label: “(-) IRPJ / CSLL”,        val: -ir,   negativa: true  },
+{ label: “= Lucro Líquido”,        val: ll,    negativa: false, destaque: true, cor: C.green },
+];
+
+return (
+<div style={{ display: “flex”, flexDirection: “column”, gap: 24 }}>
+
+```
+  {/* KPIs DRE */}
+  <section>
+    <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+      DRE Consolidada — Q1 2026
+    </h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {linhas.map((l) => {
+        const pct = Math.abs(l.val) / maxBar;
+        const barCor = l.cor || (l.negativa ? C.red : C.accent);
+        const mg = !l.negativa && l.label !== "Receita Bruta" && rl ? l.val / rl : null;
+        return (
+          <div key={l.label} style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: l.destaque ? "12px 14px" : "8px 14px",
+            borderRadius: 8,
+            background: l.destaque ? C.surface : "transparent",
+            border: l.destaque ? `1px solid ${C.border}` : "none",
+          }}>
+            <span style={{ fontSize: 11, fontFamily: "Syne", fontWeight: l.destaque ? 700 : 400, color: l.negativa ? C.muted : (l.cor || C.text), width: 190, flexShrink: 0 }}>{l.label}</span>
+            <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
+              <div style={{ width: `${Math.max(pct * 100, 0.5)}%`, height: "100%", borderRadius: 3, background: barCor, opacity: l.negativa ? 0.5 : 0.9 }} />
+            </div>
+            <span style={{ fontSize: 12, fontFamily: "JetBrains Mono", fontWeight: l.destaque ? 700 : 400, color: l.negativa ? C.muted : (l.cor || C.text), width: 110, textAlign: "right", flexShrink: 0 }}>
+              {l.negativa ? `−${fR(Math.abs(l.val), true)}` : fR(l.val, true)}
+            </span>
+            <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: C.muted, width: 52, textAlign: "right", flexShrink: 0 }}>
+              {mg != null ? fP(mg) : ""}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  </section>
+
+  {/* Evolução mensal detalhada */}
+  <section>
+    <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+      Evolução Mensal
+    </h2>
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 400 }}>
+        <thead>
+          <tr>
+            {["", "JAN", "FEV", "MAR", "YTD"].map(h => (
+              <th key={h} style={{ padding: "8px 12px", fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", textAlign: h === "" ? "left" : "right", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {[
+            { label: "Receita Bruta", campo: "rb", cor: C.text, bold: true },
+            { label: "EBITDA",        campo: "ebitda", cor: C.indigo, bold: true },
+            { label: "Mg. EBITDA",    campo: "mg_ebitda", cor: C.indigo, pct: true },
+            { label: "Lucro Líquido", campo: "ll", cor: C.green, bold: true },
+            { label: "Mg. LL",        campo: "mg_ll", cor: C.green, pct: true },
+          ].map((row, ri) => (
+            <tr key={row.label} style={{ background: ri % 2 === 0 ? C.bg : "transparent" }}>
+              <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "Syne", fontWeight: row.bold ? 600 : 400, color: C.muted, borderBottom: `1px solid ${C.border}` }}>{row.label}</td>
+              {d.meses.map(m => (
+                <td key={m.mes} style={{ padding: "8px 12px", fontSize: 12, fontFamily: "JetBrains Mono", fontWeight: row.bold ? 600 : 400, textAlign: "right", color: row.pct ? ((m[row.campo]||0) >= 0.20 ? C.green : C.amber) : row.cor, borderBottom: `1px solid ${C.border}` }}>
+                  {row.pct ? fP(m[row.campo]) : fR(m[row.campo], true)}
+                </td>
+              ))}
+              <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "JetBrains Mono", fontWeight: 700, textAlign: "right", color: row.cor, borderBottom: `1px solid ${C.border}`, background: "rgba(255,255,255,0.03)" }}>
+                {row.pct ? fP(d.q1[row.campo.replace("mg_","margem_").replace("mg","margem_")]) : fR(d.q1[row.campo.includes("ebitda") && !row.pct ? "ebitda" : row.campo.includes("ll") && !row.pct ? "ll" : row.campo], true)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted, marginTop: 8 }}>
+      Fonte: Planilha Controle_de_Atendimentos_icb.xlsx · Abas Despesas JAN–MAR 2026 · Sincronização via Dropbox
+    </p>
+  </section>
+</div>
+```
+
+);
+}
+
+// ─── Tab: Alertas ─────────────────────────────────────────────────────────────
+function TabAlertas() {
+const [abertos, setAbertos] = useState({ 0: true, 1: true });
+const toggle = (i) => setAbertos(p => ({ …p, [i]: !p[i] }));
+
+return (
+<div style={{ display: “flex”, flexDirection: “column”, gap: 16 }}>
+<div style={{ display: “grid”, gridTemplateColumns: “repeat(3, 1fr)”, gap: 10, marginBottom: 8 }}>
+{[“critico”,“atencao”,“info”].map(nivel => {
+const cfg = { critico:{cor:C.red,bg:“rgba(239,68,68,0.1)”}, atencao:{cor:C.amber,bg:“rgba(245,158,11,0.1)”}, info:{cor:C.accent,bg:“rgba(59,130,246,0.1)”} }[nivel];
+const cnt = DATA.alertas.filter(a => a.nivel === nivel).length;
+return (
+<div key={nivel} style={{ padding: “14px”, borderRadius: 10, background: cfg.bg, border: `1px solid ${cfg.cor}30`, textAlign: “center” }}>
+<div style={{ fontSize: 28, fontFamily: “Syne”, fontWeight: 800, color: cfg.cor }}>{cnt}</div>
+<div style={{ fontSize: 9, fontFamily: “JetBrains Mono”, color: C.muted, textTransform: “uppercase”, letterSpacing: “0.08em”, marginTop: 4 }}>
+{nivel === “critico” ? “Crítico” : nivel === “atencao” ? “Atenção” : “Info”}
+</div>
+</div>
+);
+})}
+</div>
+
+```
+  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    {DATA.alertas.map((a, i) => (
+      <AlertBadge key={i} a={a} expanded={!!abertos[i]} onToggle={() => toggle(i)} />
+    ))}
+  </div>
+
+  <div style={{ padding: "14px 16px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, marginTop: 8 }}>
+    <h3 style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 10px" }}>Sistema de detecção</h3>
+    {[
+      ["Margem LL < 0 por 2+ meses", "Detecta unidades em risco de encerramento"],
+      ["Receita < R$ 60K/mês por 2 meses", "Limiar baseado nas unidades que já fecharam"],
+      ["Queda YoY > 20%", "Colapso súbito de demanda"],
+      ["Conversão < 35%", "Problema no funil de captação"],
+      ["% NF emitida < 65%", "Exposição fiscal acumulada"],
+    ].map(([regra, desc]) => (
+      <div key={regra} style={{ display: "flex", gap: 12, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: C.accent, flexShrink: 0, width: 240 }}>{regra}</span>
+        <span style={{ fontSize: 11, color: C.muted }}>{desc}</span>
+      </div>
+    ))}
+  </div>
+</div>
+```
+
+);
+}
+
+// ─── App principal ────────────────────────────────────────────────────────────
+const TABS = [
+{ id: “resumo”,      label: “Resumo”      },
+{ id: “unidades”,    label: “Unidades”    },
+{ id: “medicos”,     label: “Médicos”     },
+{ id: “financeiro”,  label: “Financeiro”  },
+{ id: “alertas”,     label: “Alertas”     },
+];
+
+export default function App() {
+const [tab, setTab] = useState(“resumo”);
+const [unitDrawer, setUnitDrawer] = useState(null);
+const [medicoDrawer, setMedicoDrawer] = useState(null);
+
+const criticos = DATA.alertas.filter(a => a.nivel === “critico”).length;
+
+return (
+<div style={{ background: C.bg, minHeight: “100vh”, color: C.text, fontFamily: “Syne, system-ui, sans-serif” }}>
+<style>{`${FONTS} * { box-sizing: border-box; margin: 0; padding: 0; } ::-webkit-scrollbar { width: 4px; height: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; } @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} } button:hover { opacity: 0.85; } input:focus { border-color: rgba(99,102,241,0.5) !important; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }`}</style>
+
+```
+  {/* ── Header ── */}
+  <header style={{
+    position: "sticky", top: 0, zIndex: 100,
+    background: "rgba(8,12,20,0.95)", backdropFilter: "blur(12px)",
+    borderBottom: `1px solid ${C.border}`,
+  }}>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
+
+      {/* Topo do header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${C.accent}, ${C.indigo})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, fontFamily: "Syne" }}>i</div>
+          <div>
+            <div style={{ fontSize: 13, fontFamily: "Syne", fontWeight: 800, color: C.text, lineHeight: 1 }}>ICB Dashboard</div>
+            <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>Visão Executiva</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Período */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border2}`, fontSize: 11, fontFamily: "JetBrains Mono", color: C.text }}>
+            <span style={{ color: C.muted }}>Período:</span> MAR/2026
+          </div>
+          {/* Comparativo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border2}`, fontSize: 11, fontFamily: "JetBrains Mono", color: C.text }}>
+            <span style={{ color: C.muted }}>vs:</span> MAR/2025
+          </div>
+          {/* Badge alertas críticos */}
+          {criticos > 0 && (
+            <button onClick={() => setTab("alertas")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 8, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: C.red, fontSize: 11, fontFamily: "JetBrains Mono", fontWeight: 600, cursor: "pointer" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.red, display: "inline-block", animation: "pulse 1.8s infinite" }} />
+              {criticos} crítico{criticos > 1 ? "s" : ""}
+            </button>
+          )}
+          {/* Status sync */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, display: "inline-block" }} />
+            Sincronizado
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, paddingBottom: 0 }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{
+              padding: "8px 16px", fontSize: 12, fontFamily: "Syne", fontWeight: 600,
+              background: "none", border: "none", cursor: "pointer",
+              color: tab === t.id ? C.text : C.muted,
+              borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`,
+              transition: "all 0.15s",
+              position: "relative",
+            }}>
+            {t.label}
+            {t.id === "alertas" && criticos > 0 && (
+              <span style={{ position: "absolute", top: 4, right: 6, width: 6, height: 6, borderRadius: "50%", background: C.red, animation: "pulse 1.8s infinite" }} />
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  </header>
+
+  {/* ── Conteúdo ── */}
+  <main style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px 48px" }}>
+    {tab === "resumo"     && <TabResumo onAnalisarUnidade={setUnitDrawer} />}
+    {tab === "unidades"   && <TabUnidades onAnalisarUnidade={setUnitDrawer} />}
+    {tab === "medicos"    && <TabMedicos onAnalisarMedico={setMedicoDrawer} />}
+    {tab === "financeiro" && <TabFinanceiro />}
+    {tab === "alertas"    && <TabAlertas />}
+  </main>
+
+  {/* ── Drawers ── */}
+  {unitDrawer   && <UnitDrawer   unit={unitDrawer}   onClose={() => setUnitDrawer(null)} />}
+  {medicoDrawer && <MedicoDrawer medico={medicoDrawer} onClose={() => setMedicoDrawer(null)} />}
+</div>
+```
+
+);
+}

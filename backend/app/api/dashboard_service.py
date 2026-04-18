@@ -191,13 +191,57 @@ def get_profissionais_dashboard(db: Session, filters: dict) -> list[dict]:
 def get_financeiro_dashboard(db: Session, filters: dict) -> dict:
     q = select(
         FactFinanceiroMensal.competencia,
+        func.sum(FactFinanceiroMensal.receita_bruta),
+        func.sum(FactFinanceiroMensal.receita_liquida),
         func.sum(FactFinanceiroMensal.ebitda),
         func.sum(FactFinanceiroMensal.lucro_liquido),
-    ).group_by(FactFinanceiroMensal.competencia).order_by(FactFinanceiroMensal.competencia)
+    ).where(FactFinanceiroMensal.unidade_ref != "__CONSOLIDADO__")
+    q = q.group_by(FactFinanceiroMensal.competencia).order_by(FactFinanceiroMensal.competencia)
 
     q = _apply_filters(q, FactFinanceiroMensal, filters)
-    series = [{"competencia": c, "ebitda": _safe_float(e), "lucro_liquido": _safe_float(l)} for c, e, l in db.execute(q).all()]
+    q = _apply_metric_units_scope(q, db, FactFinanceiroMensal.unidade_ref)
+    series = [
+        {
+            "competencia": c,
+            "receita_bruta": _safe_float(rb),
+            "receita_liquida": _safe_float(rl),
+            "ebitda": _safe_float(e),
+            "lucro_liquido": _safe_float(ll),
+        }
+        for c, rb, rl, e, ll in db.execute(q).all()
+    ]
     return {"serie": series}
+
+
+def get_unidades_financeiro(db: Session, filters: dict) -> list[dict]:
+    """Per-unit financial aggregates (rb, rl, ebitda, ll + margens)."""
+    q = select(
+        FactFinanceiroMensal.unidade_ref,
+        func.sum(FactFinanceiroMensal.receita_bruta),
+        func.sum(FactFinanceiroMensal.receita_liquida),
+        func.sum(FactFinanceiroMensal.ebitda),
+        func.sum(FactFinanceiroMensal.lucro_liquido),
+    ).where(FactFinanceiroMensal.unidade_ref != "__CONSOLIDADO__")
+    q = q.group_by(FactFinanceiroMensal.unidade_ref)
+    q = _apply_filters(q, FactFinanceiroMensal, filters)
+    q = _apply_metric_units_scope(q, db, FactFinanceiroMensal.unidade_ref)
+    rows = db.execute(q).all()
+    out = []
+    for unidade, rb, rl, e, ll in rows:
+        rb_f = _safe_float(rb)
+        rl_f = _safe_float(rl)
+        e_f = _safe_float(e)
+        ll_f = _safe_float(ll)
+        out.append({
+            "unidade": unidade,
+            "receita_bruta": rb_f,
+            "receita_liquida": rl_f,
+            "ebitda": e_f,
+            "lucro_liquido": ll_f,
+            "margem_ebitda": (e_f / rb_f) if rb_f else None,
+            "margem_liquida": (ll_f / rb_f) if rb_f else None,
+        })
+    return out
 
 
 def get_fiscal_dashboard(db: Session, filters: dict) -> dict:
