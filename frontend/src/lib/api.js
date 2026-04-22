@@ -269,6 +269,53 @@ export const getDashboardForApp = async (periodo = 'trimestre', selecao = {}) =>
   };
 };
 
+// Recarrega os números de UMA unidade no período escolhido (mês ou trimestre do ano corrente).
+// Retorna { rb, ll, ebitda, mg_ll, mg_ebitda, conv, ticket, cirurgias, periodo, saude, mes, tri, ano }.
+export const getUnitDetail = async (unidade, periodo = 'trimestre', selecao = {}) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  const ano = selecao.ano;
+  const mes = selecao.mes;
+  const tri = selecao.tri;
+  if (!ano) throw new Error('Ano é obrigatório para getUnitDetail');
+
+  const triRef = periodo === 'trimestre' ? tri : Math.ceil(mes / 3);
+  const triKeys = [triRef * 3 - 2, triRef * 3 - 1, triRef * 3].map((m) => `${ano}-${pad(m)}`);
+  const monthKey = `${ano}-${pad(mes || triRef * 3)}`;
+  const compFilter = periodo === 'mes' ? [monthKey] : triKeys;
+
+  const params = { competencias: compFilter, unidades: [unidade] };
+  const cfg = { params, paramsSerializer: { indexes: null } };
+
+  const [opRes, finRes, statusRes] = await Promise.all([
+    api.get('/dashboard/unidades', cfg),
+    api.get('/dashboard/unidades-financeiro', cfg),
+    api.get('/unidades/status'),
+  ]);
+
+  const o = (opRes.data || []).find((u) => u.unidade === unidade) || {};
+  const f = (finRes.data || []).find((u) => u.unidade === unidade) || {};
+  const status = (statusRes.data?.items || []).find((s) => s.unidade === unidade)?.status;
+
+  const rb = safeNum(f.receita_bruta) ?? safeNum(o.receita_operacional) ?? 0;
+  const ll = safeNum(f.lucro_liquido);
+  const ebitda = safeNum(f.ebitda);
+  const conv = safeNum(o.conv_consulta_cirurgia);
+  const ticket = safeNum(o.ticket_medio_cirurgia);
+  const cirurgias = safeNum(o.cirurgias);
+  const mg_ll = ll != null && rb ? ll / rb : null;
+  const mg_ebitda = ebitda != null && rb ? ebitda / rb : null;
+
+  return {
+    UNIDADE: unidade,
+    rb, ll, ebitda, mg_ll, mg_ebitda, conv, ticket, cirurgias,
+    periodo,
+    ano,
+    mes: mes || null,
+    tri: triRef,
+    saude: buildSaude({ ll, mg_ll, conv, ticket, statusUnidade: status }),
+  };
+};
+
 export const getExecutiveReport = async (filters = {}) => {
   const params = paramsFromFilters(filters);
   if (filters.periodo) params.periodo = filters.periodo;

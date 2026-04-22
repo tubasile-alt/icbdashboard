@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getDashboardForApp } from "./lib/api";
+import { getDashboardForApp, getUnitDetail } from "./lib/api";
 
 // ─── Google Fonts ───────────────────────────────────────────────────────────
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');`;
@@ -89,10 +89,43 @@ function Sparkline({ values, color = C.accent, height = 32 }) {
 }
 
 // ─── Drawer Unidade ─────────────────────────────────────────────────────────
-function UnitDrawer({ unit, convRede, onClose }) {
+function UnitDrawer({ unit, convRede, onClose, anoCorrente, mesMaxCorrente }) {
+  const [periodo, setPeriodo] = useState(unit?.periodo || "trimestre");
+  const [mes, setMes] = useState(unit?.mes ?? null);
+  const [tri, setTri] = useState(unit?.tri ?? null);
+  const [detalhe, setDetalhe] = useState(unit);
+  const [loading, setLoading] = useState(false);
+  const reqIdRef = useRef(0);
+
+  // Hidrata defaults a partir do unit recebido na primeira abertura.
+  useEffect(() => {
+    if (!unit) return;
+    setPeriodo(unit.periodo || "trimestre");
+    setMes(unit.mes ?? mesMaxCorrente ?? null);
+    setTri(unit.tri ?? (mesMaxCorrente ? Math.ceil(mesMaxCorrente / 3) : null));
+    setDetalhe(unit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit?.UNIDADE]);
+
+  // Recarrega quando o usuário muda o período dentro do drawer.
+  useEffect(() => {
+    if (!unit?.UNIDADE || !anoCorrente) return;
+    if (periodo === "mes" && mes == null) return;
+    if (periodo === "trimestre" && tri == null) return;
+    const myId = ++reqIdRef.current;
+    setLoading(true);
+    getUnitDetail(unit.UNIDADE, periodo, { ano: anoCorrente, mes, tri })
+      .then((d) => { if (myId === reqIdRef.current) setDetalhe(d); })
+      .catch((e) => { console.error(e); })
+      .finally(() => { if (myId === reqIdRef.current) setLoading(false); });
+  }, [unit?.UNIDADE, periodo, mes, tri, anoCorrente]);
+
   if (!unit) return null;
-  const cfg = saude_cfg[unit.saude] || saude_cfg.ok;
-  const periodoTexto = unit.periodo === "mes" ? "Mês corrente" : "Trimestre corrente";
+  const u = detalhe || unit;
+  const cfg = saude_cfg[u.saude] || saude_cfg.ok;
+  const periodoTexto = periodo === "mes"
+    ? `${MES_NOMES[(mes || 1) - 1]}/${String(anoCorrente || "").slice(-2)}`
+    : `Q${tri || 1} ${anoCorrente || ""}`;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} />
@@ -109,23 +142,36 @@ function UnitDrawer({ unit, convRede, onClose }) {
             <button onClick={onClose} style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.dim, width: 28, height: 28, borderRadius: 8, cursor: "pointer", fontSize: 14 }}>✕</button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h2 style={{ fontSize: 20, fontFamily: "Syne", fontWeight: 700, color: C.text, margin: 0 }}>{unit.UNIDADE}</h2>
+            <h2 style={{ fontSize: 20, fontFamily: "Syne", fontWeight: 700, color: C.text, margin: 0 }}>{u.UNIDADE}</h2>
             <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: cfg.bg, color: cfg.cor, border: `1px solid ${cfg.cor}30`, fontFamily: "JetBrains Mono" }}>
               {cfg.label.toUpperCase()}
             </span>
+            {loading && (
+              <span style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, marginLeft: 4 }}>atualizando…</span>
+            )}
           </div>
-          <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0", fontFamily: "JetBrains Mono" }}>{periodoTexto}</p>
+          <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 10px", fontFamily: "JetBrains Mono" }}>{periodoTexto}</p>
+          <PeriodoToggle
+            periodo={periodo}
+            setPeriodo={setPeriodo}
+            mes={mes}
+            setMes={setMes}
+            tri={tri}
+            setTri={setTri}
+            anoCorrente={anoCorrente}
+            mesMaxCorrente={mesMaxCorrente}
+          />
         </div>
 
         <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
             {[
-              { label: "Cirurgias", val: unit.cirurgias ?? "n/d", sub: periodoTexto },
-              { label: "Receita Bruta", val: fR(unit.rb, true) },
-              { label: "Lucro Líquido", val: fR(unit.ll, true), sub: unit.mg_ll != null ? fP(unit.mg_ll) + " margem" : null, cor: (unit.ll || 0) >= 0 ? C.green : C.red },
-              { label: "Mg. EBITDA", val: unit.mg_ebitda != null ? fP(unit.mg_ebitda) : "n/d", cor: (unit.mg_ebitda || 0) >= 0.20 ? C.green : C.amber },
-              { label: "Conversão", val: unit.conv != null ? fP(unit.conv) : "n/d", sub: convRede != null ? `Rede: ${fP(convRede)}` : null, cor: (unit.conv || 0) >= 0.40 ? C.green : C.red },
-              { label: "Ticket Médio", val: unit.ticket != null ? fR(unit.ticket) : "n/d", sub: "por cirurgia" },
+              { label: "Cirurgias", val: u.cirurgias ?? "n/d", sub: periodoTexto },
+              { label: "Receita Bruta", val: fR(u.rb, true) },
+              { label: "Lucro Líquido", val: fR(u.ll, true), sub: u.mg_ll != null ? fP(u.mg_ll) + " margem" : null, cor: (u.ll || 0) >= 0 ? C.green : C.red },
+              { label: "Mg. EBITDA", val: u.mg_ebitda != null ? fP(u.mg_ebitda) : "n/d", cor: (u.mg_ebitda || 0) >= 0.20 ? C.green : C.amber },
+              { label: "Conversão", val: u.conv != null ? fP(u.conv) : "n/d", sub: convRede != null ? `Rede: ${fP(convRede)}` : null, cor: (u.conv || 0) >= 0.40 ? C.green : C.red },
+              { label: "Ticket Médio", val: u.ticket != null ? fR(u.ticket) : "n/d", sub: "por cirurgia" },
             ].map((k) => (
               <div key={k.label} style={{ padding: 14, borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{k.label}</div>
@@ -144,9 +190,9 @@ function UnitDrawer({ unit, convRede, onClose }) {
             <h3 style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Diagnóstico</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {[
-                { label: "Margem vs rede", ok: (unit.mg_ll || 0) >= 0.20, texto: (unit.mg_ll || 0) >= 0.20 ? `Margem LL ${fP(unit.mg_ll)} — acima de 20%` : `Margem LL ${fP(unit.mg_ll)} — abaixo do mínimo de 20%` },
-                { label: "Conversão", ok: (unit.conv || 0) >= 0.40, texto: (unit.conv || 0) >= 0.40 ? `Conversão ${fP(unit.conv)} — dentro do esperado` : `Conversão ${fP(unit.conv)} — ${unit.conv != null ? "abaixo do benchmark de 40%" : "sem dados"}` },
-                { label: "Receita bruta", ok: (unit.rb || 0) >= 400000, texto: (unit.rb || 0) >= 400000 ? `R$ ${((unit.rb || 0) / 1000).toFixed(0)}K — volume adequado` : `R$ ${((unit.rb || 0) / 1000).toFixed(0)}K — abaixo do limiar de R$ 400K/trim.` },
+                { label: "Margem vs rede", ok: (u.mg_ll || 0) >= 0.20, texto: (u.mg_ll || 0) >= 0.20 ? `Margem LL ${fP(u.mg_ll)} — acima de 20%` : `Margem LL ${fP(u.mg_ll)} — abaixo do mínimo de 20%` },
+                { label: "Conversão", ok: (u.conv || 0) >= 0.40, texto: (u.conv || 0) >= 0.40 ? `Conversão ${fP(u.conv)} — dentro do esperado` : `Conversão ${fP(u.conv)} — ${u.conv != null ? "abaixo do benchmark de 40%" : "sem dados"}` },
+                { label: "Receita bruta", ok: (u.rb || 0) >= (periodo === "mes" ? 130000 : 400000), texto: (u.rb || 0) >= (periodo === "mes" ? 130000 : 400000) ? `R$ ${((u.rb || 0) / 1000).toFixed(0)}K — volume adequado` : `R$ ${((u.rb || 0) / 1000).toFixed(0)}K — abaixo do limiar de R$ ${periodo === "mes" ? "130K/mês" : "400K/trim."}` },
               ].map((d) => (
                 <div key={d.label} style={{ display: "flex", gap: 10, padding: "10px 12px", borderRadius: 8, background: d.ok ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)", border: `1px solid ${d.ok ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)"}` }}>
                   <span style={{ fontSize: 14 }}>{d.ok ? "✓" : "✗"}</span>
@@ -321,8 +367,10 @@ function KpiCard({ label, valor, delta, subvalor, sublabel, sparkline, accentCol
 }
 
 // ─── Linha Unidade ──────────────────────────────────────────────────────────
-function UnitRow({ u, rank, onAnalisar, compact = false, periodo }) {
+function UnitRow({ u, rank, onAnalisar, compact = false, periodo, mes, tri }) {
   const periodoEfetivo = periodo ?? u.periodo ?? "trimestre";
+  const mesEfetivo = mes ?? u.mes ?? null;
+  const triEfetivo = tri ?? u.tri ?? null;
   const cfg = saude_cfg[u.saude] || saude_cfg.ok;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: compact ? 8 : 12, padding: compact ? "8px 12px" : "10px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
@@ -337,7 +385,7 @@ function UnitRow({ u, rank, onAnalisar, compact = false, periodo }) {
         </>
       )}
       {compact && <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", fontWeight: 600, color: (u.ll || 0) >= 0 ? C.green : C.red, flexShrink: 0 }}>{fR(u.ll, true)}</span>}
-      <button onClick={() => onAnalisar({ ...u, periodo: periodoEfetivo })} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
+      <button onClick={() => onAnalisar({ ...u, periodo: periodoEfetivo, mes: mesEfetivo, tri: triEfetivo })} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
     </div>
   );
 }
@@ -368,6 +416,8 @@ function AlertBadge({ a, expanded, onToggle }) {
 
 // ─── Tab: Resumo ────────────────────────────────────────────────────────────
 function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo, mes, setMes, tri, setTri, anoCorrente, mesMaxCorrente }) {
+  const mesEfetivoTab = mes ?? d.selecao?.mes ?? null;
+  const triEfetivoTab = tri ?? d.selecao?.tri ?? null;
   const [alertasAbertos, setAlertasAbertos] = useState({});
   const criticos = d.alertas.filter((a) => a.nivel === "critico").length;
   const toggle = (i) => setAlertasAbertos((p) => ({ ...p, [i]: !p[i] }));
@@ -442,7 +492,7 @@ function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo, mes, setMes, tri
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green }} />Top 5 por Lucro Líquido
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {d.top5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={i + 1} onAnalisar={onAnalisarUnidade} compact periodo={periodo} />)}
+              {d.top5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={i + 1} onAnalisar={onAnalisarUnidade} compact periodo={periodo} mes={mesEfetivoTab} tri={triEfetivoTab} />)}
             </div>
           </div>
           <div>
@@ -450,7 +500,7 @@ function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo, mes, setMes, tri
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.red }} />Bottom 5 — Exigem Atenção
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {d.bot5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={d.unidades.length - i} onAnalisar={onAnalisarUnidade} compact periodo={periodo} />)}
+              {d.bot5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={d.unidades.length - i} onAnalisar={onAnalisarUnidade} compact periodo={periodo} mes={mesEfetivoTab} tri={triEfetivoTab} />)}
             </div>
           </div>
         </div>
@@ -867,7 +917,15 @@ export default function App() {
         {tab === "alertas" && <TabAlertas d={d} />}
       </main>
 
-      {unitDrawer && <UnitDrawer unit={unitDrawer} convRede={d.conv_media_rede} onClose={() => setUnitDrawer(null)} />}
+      {unitDrawer && (
+        <UnitDrawer
+          unit={unitDrawer}
+          convRede={d.conv_media_rede}
+          onClose={() => setUnitDrawer(null)}
+          anoCorrente={d.selecao?.ano_corrente}
+          mesMaxCorrente={d.selecao?.mes_max_corrente}
+        />
+      )}
       {medicoDrawer && <MedicoDrawer medico={medicoDrawer} convRede={d.conv_media_rede} onClose={() => setMedicoDrawer(null)} />}
     </div>
   );
