@@ -336,31 +336,33 @@ function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo }) {
       <div style={{ display: "flex", justifyContent: "flex-start" }}>
         <PeriodoToggle periodo={periodo} setPeriodo={setPeriodo} />
       </div>
-      <section>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Último Mês Fechado — {d.ultimo_mes.label}</h2>
-          <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>vs {d.mesmo_mes_ano_anterior.label}</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-          <KpiCard label="Receita Bruta" valor={fR(d.ultimo_mes.rb, true)} delta={d.yoy_mes} sublabel={d.mesmo_mes_ano_anterior.label} accentColor={C.accent} sparkline={d.meses.map((m) => m.rb)} />
-          <KpiCard label="EBITDA" valor={fR(d.ultimo_mes.ebitda, true)} subvalor={`Margem ${fP(d.ultimo_mes.mg_ebitda)}`} accentColor={C.indigo} sparkline={d.meses.map((m) => m.ebitda)} />
-          <KpiCard label="Lucro Líquido" valor={fR(d.ultimo_mes.ll, true)} subvalor={`Margem ${fP(d.ultimo_mes.mg_ll)}`} accentColor={C.green} sparkline={d.meses.map((m) => m.ll)} />
-          <KpiCard label="Conversão da Rede" valor={fP(d.conv_media_rede)} subvalor="cirurgias / consultas" accentColor={C.amber} />
-        </div>
-      </section>
-
-      <section>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Acumulado {d.q1.label}</h2>
-          <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>vs {d.q1_ano_anterior.label}</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-          <KpiCard label="Receita Bruta" valor={fR(d.q1.rb, true)} delta={d.yoy_q1} sublabel={d.q1_ano_anterior.label} accentColor={C.accent} />
-          <KpiCard label="EBITDA" valor={fR(d.q1.ebitda, true)} subvalor={`Margem ${fP(d.q1.mg_ebitda)}`} accentColor={C.indigo} />
-          <KpiCard label="Lucro Líquido" valor={fR(d.q1.ll, true)} subvalor={`Margem ${fP(d.q1.mg_ll)}`} accentColor={C.green} />
-          <KpiCard label="Unidades Ativas" valor={String(d.unidades_ativas)} subvalor={`${d.unidades_encerradas} encerradas excluídas`} accentColor={C.purple} />
-        </div>
-      </section>
+      {periodo === "mes" ? (
+        <section>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Último Mês Fechado — {d.ultimo_mes.label}</h2>
+            <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>vs {d.mesmo_mes_ano_anterior.label}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <KpiCard label="Receita Bruta" valor={fR(d.ultimo_mes.rb, true)} delta={d.yoy_mes} sublabel={d.mesmo_mes_ano_anterior.label} accentColor={C.accent} sparkline={d.meses.map((m) => m.rb)} />
+            <KpiCard label="EBITDA" valor={fR(d.ultimo_mes.ebitda, true)} subvalor={`Margem ${fP(d.ultimo_mes.mg_ebitda)}`} accentColor={C.indigo} sparkline={d.meses.map((m) => m.ebitda)} />
+            <KpiCard label="Lucro Líquido" valor={fR(d.ultimo_mes.ll, true)} subvalor={`Margem ${fP(d.ultimo_mes.mg_ll)}`} accentColor={C.green} sparkline={d.meses.map((m) => m.ll)} />
+            <KpiCard label="Conversão da Rede" valor={fP(d.conv_media_rede)} subvalor="cirurgias / consultas" accentColor={C.amber} />
+          </div>
+        </section>
+      ) : (
+        <section>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Acumulado {d.q1.label}</h2>
+            <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted }}>vs {d.q1_ano_anterior.label}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <KpiCard label="Receita Bruta" valor={fR(d.q1.rb, true)} delta={d.yoy_q1} sublabel={d.q1_ano_anterior.label} accentColor={C.accent} />
+            <KpiCard label="EBITDA" valor={fR(d.q1.ebitda, true)} subvalor={`Margem ${fP(d.q1.mg_ebitda)}`} accentColor={C.indigo} />
+            <KpiCard label="Lucro Líquido" valor={fR(d.q1.ll, true)} subvalor={`Margem ${fP(d.q1.mg_ll)}`} accentColor={C.green} />
+            <KpiCard label="Unidades Ativas" valor={String(d.unidades_ativas)} subvalor={`${d.unidades_encerradas} encerradas excluídas`} accentColor={C.purple} />
+          </div>
+        </section>
+      )}
 
       <section>
         <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Evolução Mensal — Trimestre</h2>
