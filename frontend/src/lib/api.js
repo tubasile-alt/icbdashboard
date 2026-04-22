@@ -63,16 +63,15 @@ const buildSaude = ({ ll, mg_ll, conv, ticket, statusUnidade }) => {
   return 'ok';
 };
 
-export const getDashboardForApp = async () => {
-  const [last, summary, unidades, profissionais, financeiro, alertas, statusRes, unidadesFinTri] = await Promise.all([
+export const getDashboardForApp = async (periodo = 'trimestre') => {
+  // 1ª fase: dados independentes do período (precisamos da série para descobrir last/tri).
+  const [last, summary, profissionais, financeiro, alertas, statusRes] = await Promise.all([
     api.get('/last-update'),
     api.get('/dashboard/summary'),
-    api.get('/dashboard/unidades'),
     api.get('/dashboard/profissionais'),
     api.get('/dashboard/financeiro'),
     api.get('/dashboard/alertas'),
     api.get('/unidades/status'),
-    api.get('/dashboard/unidades-financeiro'),
   ]);
 
   const serie = financeiro.data?.serie || [];
@@ -82,6 +81,17 @@ export const getDashboardForApp = async () => {
   const tri = serie.slice(-3);
   const lastComp = tri[tri.length - 1];
   const lastCompKey = lastComp?.competencia;
+
+  // 2ª fase: dados por unidade filtrados pelo período escolhido (mês ou trimestre).
+  const triKeys = tri.map((s) => s.competencia);
+  const compFilter = periodo === 'mes' && lastCompKey ? [lastCompKey] : triKeys;
+  const unitParams = compFilter.length ? { competencias: compFilter } : {};
+  const unitParamsSerializer = { paramsSerializer: { indexes: null } };
+
+  const [unidades, unidadesFinTri] = await Promise.all([
+    api.get('/dashboard/unidades', { params: unitParams, ...unitParamsSerializer }),
+    api.get('/dashboard/unidades-financeiro', { params: unitParams, ...unitParamsSerializer }),
+  ]);
   const [lastYear, lastMonth] = (lastCompKey || '').split('-').map(Number);
   const labelMonth = lastMonth ? `${MES_LABELS[lastMonth - 1]}/${String(lastYear).slice(-2)}` : '—';
 
@@ -141,6 +151,7 @@ export const getDashboardForApp = async () => {
     const ebitda = safeNum(f.ebitda);
     const conv = safeNum(o.conv_consulta_cirurgia);
     const ticket = safeNum(o.ticket_medio_cirurgia);
+    const cirurgias = safeNum(o.cirurgias);
     return {
       UNIDADE: nome,
       rb,
@@ -150,6 +161,8 @@ export const getDashboardForApp = async () => {
       mg_ebitda: ebitda != null && rb ? ebitda / rb : null,
       conv,
       ticket,
+      cirurgias,
+      periodo,
       saude: buildSaude({ ll, mg_ll: ll != null && rb ? ll / rb : null, conv, ticket, statusUnidade: status }),
     };
   }).filter(Boolean).sort((a, b) => (b.ll ?? -Infinity) - (a.ll ?? -Infinity));

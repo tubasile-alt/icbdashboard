@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getDashboardForApp } from "./lib/api";
 
 // ─── Google Fonts ───────────────────────────────────────────────────────────
@@ -280,7 +280,8 @@ function KpiCard({ label, valor, delta, subvalor, sublabel, sparkline, accentCol
 }
 
 // ─── Linha Unidade ──────────────────────────────────────────────────────────
-function UnitRow({ u, rank, onAnalisar, compact = false, periodo = "trimestre" }) {
+function UnitRow({ u, rank, onAnalisar, compact = false, periodo }) {
+  const periodoEfetivo = periodo ?? u.periodo ?? "trimestre";
   const cfg = saude_cfg[u.saude] || saude_cfg.ok;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: compact ? 8 : 12, padding: compact ? "8px 12px" : "10px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
@@ -295,7 +296,7 @@ function UnitRow({ u, rank, onAnalisar, compact = false, periodo = "trimestre" }
         </>
       )}
       {compact && <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", fontWeight: 600, color: (u.ll || 0) >= 0 ? C.green : C.red, flexShrink: 0 }}>{fR(u.ll, true)}</span>}
-      <button onClick={() => onAnalisar({ ...u, periodo })} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
+      <button onClick={() => onAnalisar({ ...u, periodo: periodoEfetivo })} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
     </div>
   );
 }
@@ -678,30 +679,35 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState("resumo");
+  const [periodo, setPeriodo] = useState("trimestre");
   const [unitDrawer, setUnitDrawer] = useState(null);
   const [medicoDrawer, setMedicoDrawer] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  const load = async () => {
+  const reqIdRef = useRef(0);
+  const load = async (p = periodo) => {
+    const myId = ++reqIdRef.current;
     try {
-      const d = await getDashboardForApp();
+      const d = await getDashboardForApp(p);
+      if (myId !== reqIdRef.current) return; // ignora resposta de uma chamada já obsoleta
       setData(d);
       setErr("");
     } catch (e) {
+      if (myId !== reqIdRef.current) return;
       console.error(e);
       setErr("Falha ao carregar dados do dashboard.");
     } finally {
-      setLoading(false);
+      if (myId === reqIdRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 60_000);
+    load(periodo);
+    const id = setInterval(() => load(periodo), 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [periodo]);
 
   if (loading && !data) {
     return (
@@ -779,7 +785,7 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px 48px" }}>
-        {tab === "resumo" && <TabResumo d={d} onAnalisarUnidade={setUnitDrawer} />}
+        {tab === "resumo" && <TabResumo d={d} onAnalisarUnidade={setUnitDrawer} periodo={periodo} setPeriodo={setPeriodo} />}
         {tab === "unidades" && <TabUnidades d={d} onAnalisarUnidade={setUnitDrawer} />}
         {tab === "medicos" && <TabMedicos d={d} onAnalisarMedico={setMedicoDrawer} />}
         {tab === "financeiro" && <TabFinanceiro d={d} />}
