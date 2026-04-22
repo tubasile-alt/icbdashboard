@@ -170,28 +170,69 @@ function UnitDrawer({ unit, convRede, onClose }) {
   );
 }
 
-function PeriodoToggle({ periodo, setPeriodo }) {
+const MES_NOMES = ["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+
+function PeriodoToggle({ periodo, setPeriodo, mes, setMes, tri, setTri, anoCorrente, mesMaxCorrente }) {
+  const mesesDisponiveis = Array.from({ length: mesMaxCorrente || 12 }, (_, i) => i + 1);
+  const triMax = Math.ceil((mesMaxCorrente || 12) / 3);
+  const trisDisponiveis = Array.from({ length: triMax }, (_, i) => i + 1);
+
+  const selectStyle = {
+    padding: "6px 10px",
+    borderRadius: 7,
+    border: `1px solid ${C.border2}`,
+    background: C.surface2,
+    color: C.text,
+    fontSize: 11,
+    fontFamily: "JetBrains Mono",
+    fontWeight: 600,
+    cursor: "pointer",
+    outline: "none",
+    appearance: "none",
+    paddingRight: 22,
+    backgroundImage:
+      "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%2394A3B8' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>\")",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 8px center",
+  };
+
   return (
-    <div style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: C.surface, border: `1px solid ${C.border2}` }}>
-      {["mes", "trimestre"].map((p) => (
-        <button
-          key={p}
-          onClick={() => setPeriodo(p)}
-          style={{
-            padding: "6px 12px",
-            borderRadius: 7,
-            border: "none",
-            cursor: "pointer",
-            fontSize: 11,
-            fontFamily: "JetBrains Mono",
-            fontWeight: 600,
-            color: periodo === p ? C.text : C.muted,
-            background: periodo === p ? C.surface2 : "transparent",
-          }}
-        >
-          {periodoLabel(p)}
-        </button>
-      ))}
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: C.surface, border: `1px solid ${C.border2}` }}>
+        {["mes", "trimestre"].map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriodo(p)}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 7,
+              border: "none",
+              cursor: "pointer",
+              fontSize: 11,
+              fontFamily: "JetBrains Mono",
+              fontWeight: 600,
+              color: periodo === p ? C.text : C.muted,
+              background: periodo === p ? C.surface2 : "transparent",
+            }}
+          >
+            {periodoLabel(p)}
+          </button>
+        ))}
+      </div>
+
+      {periodo === "mes" ? (
+        <select value={mes ?? ""} onChange={(e) => setMes(Number(e.target.value))} style={selectStyle}>
+          {mesesDisponiveis.map((m) => (
+            <option key={m} value={m}>{MES_NOMES[m - 1]}/{String(anoCorrente).slice(-2)}</option>
+          ))}
+        </select>
+      ) : (
+        <select value={tri ?? ""} onChange={(e) => setTri(Number(e.target.value))} style={selectStyle}>
+          {trisDisponiveis.map((t) => (
+            <option key={t} value={t}>Q{t} {anoCorrente}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -326,7 +367,7 @@ function AlertBadge({ a, expanded, onToggle }) {
 }
 
 // ─── Tab: Resumo ────────────────────────────────────────────────────────────
-function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo }) {
+function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo, mes, setMes, tri, setTri, anoCorrente, mesMaxCorrente }) {
   const [alertasAbertos, setAlertasAbertos] = useState({});
   const criticos = d.alertas.filter((a) => a.nivel === "critico").length;
   const toggle = (i) => setAlertasAbertos((p) => ({ ...p, [i]: !p[i] }));
@@ -334,7 +375,16 @@ function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ display: "flex", justifyContent: "flex-start" }}>
-        <PeriodoToggle periodo={periodo} setPeriodo={setPeriodo} />
+        <PeriodoToggle
+          periodo={periodo}
+          setPeriodo={setPeriodo}
+          mes={mes}
+          setMes={setMes}
+          tri={tri}
+          setTri={setTri}
+          anoCorrente={anoCorrente}
+          mesMaxCorrente={mesMaxCorrente}
+        />
       </div>
       {periodo === "mes" ? (
         <section>
@@ -365,7 +415,7 @@ function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo }) {
       )}
 
       <section>
-        <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Evolução Mensal — Trimestre</h2>
+        <h2 style={{ margin: "0 0 12px", fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Evolução Mensal — {d.q1.label}</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ padding: 16, borderRadius: 12, background: C.surface, border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", marginBottom: 12 }}>Receita Bruta</div>
@@ -682,6 +732,8 @@ const TABS = [
 export default function App() {
   const [tab, setTab] = useState("resumo");
   const [periodo, setPeriodo] = useState("trimestre");
+  const [mesSel, setMesSel] = useState(null);   // null = usar mais recente
+  const [triSel, setTriSel] = useState(null);   // null = usar mais recente
   const [unitDrawer, setUnitDrawer] = useState(null);
   const [medicoDrawer, setMedicoDrawer] = useState(null);
   const [data, setData] = useState(null);
@@ -689,10 +741,10 @@ export default function App() {
   const [err, setErr] = useState("");
 
   const reqIdRef = useRef(0);
-  const load = async (p = periodo) => {
+  const load = async (p = periodo, sel = { mes: mesSel, tri: triSel }) => {
     const myId = ++reqIdRef.current;
     try {
-      const d = await getDashboardForApp(p);
+      const d = await getDashboardForApp(p, sel);
       if (myId !== reqIdRef.current) return; // ignora resposta de uma chamada já obsoleta
       setData(d);
       setErr("");
@@ -706,10 +758,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    load(periodo);
-    const id = setInterval(() => load(periodo), 60_000);
+    load(periodo, { mes: mesSel, tri: triSel });
+    const id = setInterval(() => load(periodo, { mes: mesSel, tri: triSel }), 60_000);
     return () => clearInterval(id);
-  }, [periodo]);
+  }, [periodo, mesSel, triSel]);
+
+  // Hidrata mesSel/triSel com os defaults vindos do backend só na primeira carga.
+  useEffect(() => {
+    if (!data?.selecao) return;
+    if (mesSel == null && data.selecao.mes) setMesSel(data.selecao.mes);
+    if (triSel == null && data.selecao.tri) setTriSel(data.selecao.tri);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   if (loading && !data) {
     return (
@@ -787,7 +847,20 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px 48px" }}>
-        {tab === "resumo" && <TabResumo d={d} onAnalisarUnidade={setUnitDrawer} periodo={periodo} setPeriodo={setPeriodo} />}
+        {tab === "resumo" && (
+          <TabResumo
+            d={d}
+            onAnalisarUnidade={setUnitDrawer}
+            periodo={periodo}
+            setPeriodo={(p) => { setPeriodo(p); /* mantém mes/tri selecionados; backend usa o que combinar */ }}
+            mes={mesSel ?? d.selecao?.mes}
+            setMes={setMesSel}
+            tri={triSel ?? d.selecao?.tri}
+            setTri={setTriSel}
+            anoCorrente={d.selecao?.ano_corrente}
+            mesMaxCorrente={d.selecao?.mes_max_corrente}
+          />
+        )}
         {tab === "unidades" && <TabUnidades d={d} onAnalisarUnidade={setUnitDrawer} />}
         {tab === "medicos" && <TabMedicos d={d} onAnalisarMedico={setMedicoDrawer} />}
         {tab === "financeiro" && <TabFinanceiro d={d} />}

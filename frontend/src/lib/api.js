@@ -63,8 +63,8 @@ const buildSaude = ({ ll, mg_ll, conv, ticket, statusUnidade }) => {
   return 'ok';
 };
 
-export const getDashboardForApp = async (periodo = 'trimestre') => {
-  // 1ª fase: dados independentes do período (precisamos da série para descobrir last/tri).
+export const getDashboardForApp = async (periodo = 'trimestre', selecao = {}) => {
+  // 1ª fase: dados independentes do período (precisamos da série para descobrir defaults).
   const [last, summary, profissionais, financeiro, alertas, statusRes] = await Promise.all([
     api.get('/last-update'),
     api.get('/dashboard/summary'),
@@ -77,47 +77,64 @@ export const getDashboardForApp = async (periodo = 'trimestre') => {
   const serie = financeiro.data?.serie || [];
   const serieByComp = serie.reduce((acc, s) => { acc[s.competencia] = s; return acc; }, {});
 
-  // últimas 3 competências = trimestre corrente
-  const tri = serie.slice(-3);
-  const lastComp = tri[tri.length - 1];
-  const lastCompKey = lastComp?.competencia;
+  // Defaults: usamos a última competência fechada disponível.
+  const lastInSerie = serie[serie.length - 1];
+  const [defaultYear, defaultMonth] = (lastInSerie?.competencia || '').split('-').map(Number);
+  const anoCorrente = defaultYear || new Date().getFullYear();
+  const mesMaxCorrente = (defaultYear === anoCorrente && defaultMonth) ? defaultMonth : 12;
 
-  // 2ª fase: dados por unidade filtrados pelo período escolhido (mês ou trimestre).
-  const triKeys = tri.map((s) => s.competencia);
-  const compFilter = periodo === 'mes' && lastCompKey ? [lastCompKey] : triKeys;
-  const unitParams = compFilter.length ? { competencias: compFilter } : {};
+  // Resolve mês e trimestre efetivos a partir da seleção do usuário.
+  const ano = selecao.ano || anoCorrente;
+  const mesSelecionado = periodo === 'mes'
+    ? (selecao.mes || defaultMonth || 1)
+    : null;
+  const triSelecionado = periodo === 'trimestre'
+    ? (selecao.tri || (defaultMonth ? Math.ceil(defaultMonth / 3) : 1))
+    : null;
+  const triReferencia = triSelecionado || (mesSelecionado ? Math.ceil(mesSelecionado / 3) : 1);
+  const mesReferencia = mesSelecionado || triReferencia * 3;
+
+  // Competências-alvo
+  const pad = (n) => String(n).padStart(2, '0');
+  const triMonths = [triReferencia * 3 - 2, triReferencia * 3 - 1, triReferencia * 3];
+  const triKeys = triMonths.map((m) => `${ano}-${pad(m)}`);
+  const monthKey = `${ano}-${pad(mesReferencia)}`;
+  const compFilter = periodo === 'mes' ? [monthKey] : triKeys;
+
+  const unitParams = { competencias: compFilter };
   const unitParamsSerializer = { paramsSerializer: { indexes: null } };
-
   const [unidades, unidadesFinTri] = await Promise.all([
     api.get('/dashboard/unidades', { params: unitParams, ...unitParamsSerializer }),
     api.get('/dashboard/unidades-financeiro', { params: unitParams, ...unitParamsSerializer }),
   ]);
-  const [lastYear, lastMonth] = (lastCompKey || '').split('-').map(Number);
-  const labelMonth = lastMonth ? `${MES_LABELS[lastMonth - 1]}/${String(lastYear).slice(-2)}` : '—';
+
+  const labelMonth = `${MES_LABELS[mesReferencia - 1]}/${String(ano).slice(-2)}`;
+  const selComp = serieByComp[monthKey];
 
   // Mesmo mês ano anterior
-  const prevYearKey = lastYear && lastMonth ? `${lastYear - 1}-${String(lastMonth).padStart(2, '0')}` : null;
-  const prevYearMonth = prevYearKey ? serieByComp[prevYearKey] : null;
-  const prevLabel = prevYearKey && lastMonth ? `${MES_LABELS[lastMonth - 1]}/${String(lastYear - 1).slice(-2)}` : '—';
+  const prevYearKey = `${ano - 1}-${pad(mesReferencia)}`;
+  const prevYearMonth = serieByComp[prevYearKey];
+  const prevLabel = `${MES_LABELS[mesReferencia - 1]}/${String(ano - 1).slice(-2)}`;
 
-  // Q (trimestre) anterior: mesmas 3 competências do tri corrente, shiftadas -12 meses.
-  const triPrevKeys = tri.map((s) => {
-    const [yy, mm] = s.competencia.split('-').map(Number);
-    return `${yy - 1}-${String(mm).padStart(2, '0')}`;
+  // Trimestre selecionado e anterior (-12 meses)
+  const triData = triKeys.map((k) => serieByComp[k]).filter(Boolean);
+  const triPrevKeys = triKeys.map((k) => {
+    const [yy, mm] = k.split('-').map(Number);
+    return `${yy - 1}-${pad(mm)}`;
   });
   const triPrev = triPrevKeys.map((k) => serieByComp[k]).filter(Boolean);
 
   const sum = (arr, k) => arr.reduce((a, b) => a + (b?.[k] || 0), 0);
 
-  const lastMonthData = lastComp ? {
+  const lastMonthData = selComp ? {
     label: labelMonth,
-    rb: lastComp.receita_bruta,
-    rl: lastComp.receita_liquida,
-    ebitda: lastComp.ebitda,
-    ll: lastComp.lucro_liquido,
-    mg_ebitda: ratio(lastComp.ebitda, lastComp.receita_bruta),
-    mg_ll: ratio(lastComp.lucro_liquido, lastComp.receita_bruta),
-  } : { label: '—', rb: 0, rl: 0, ebitda: 0, ll: 0, mg_ebitda: null, mg_ll: null };
+    rb: selComp.receita_bruta,
+    rl: selComp.receita_liquida,
+    ebitda: selComp.ebitda,
+    ll: selComp.lucro_liquido,
+    mg_ebitda: ratio(selComp.ebitda, selComp.receita_bruta),
+    mg_ll: ratio(selComp.lucro_liquido, selComp.receita_bruta),
+  } : { label: labelMonth, rb: null, rl: null, ebitda: null, ll: null, mg_ebitda: null, mg_ll: null, sem_dado: true };
 
   const prevMonthData = {
     label: prevLabel,
@@ -126,14 +143,14 @@ export const getDashboardForApp = async (periodo = 'trimestre') => {
     mg_ll: prevYearMonth ? ratio(prevYearMonth.lucro_liquido, prevYearMonth.receita_bruta) : null,
   };
 
-  const triRb = sum(tri, 'receita_bruta');
-  const triRl = sum(tri, 'receita_liquida');
-  const triEb = sum(tri, 'ebitda');
-  const triLl = sum(tri, 'lucro_liquido');
+  const triRb = sum(triData, 'receita_bruta');
+  const triRl = sum(triData, 'receita_liquida');
+  const triEb = sum(triData, 'ebitda');
+  const triLl = sum(triData, 'lucro_liquido');
 
   const triPrevRb = sum(triPrev, 'receita_bruta');
-  const triLabel = lastComp ? `Q${Math.ceil(lastMonth / 3)} ${lastYear}` : '—';
-  const triPrevLabel = lastYear ? `Q${Math.ceil(lastMonth / 3)} ${lastYear - 1}` : '—';
+  const triLabel = `Q${triReferencia} ${ano}`;
+  const triPrevLabel = `Q${triReferencia} ${ano - 1}`;
 
   // Per-unit financials (trimestre = mesmas filters; backend já agrega)
   const finByUnit = (unidadesFinTri.data || []).reduce((acc, u) => { acc[u.unidade] = u; return acc; }, {});
@@ -183,9 +200,11 @@ export const getDashboardForApp = async (periodo = 'trimestre') => {
     };
   }).sort((a, b) => b.cirurgias - a.cirurgias);
 
-  // Meses do trimestre
-  const meses = tri.map((s) => {
-    const [, m] = s.competencia.split('-').map(Number);
+  // Meses do trimestre selecionado (preenchendo zeros quando ainda não fechado)
+  const meses = triKeys.map((k) => {
+    const [, m] = k.split('-').map(Number);
+    const s = serieByComp[k];
+    if (!s) return { mes: m, label: MES_LABELS[m - 1], rb: 0, ebitda: 0, ll: 0, mg_ebitda: null, mg_ll: null };
     return {
       mes: m,
       label: MES_LABELS[m - 1],
@@ -239,6 +258,14 @@ export const getDashboardForApp = async (periodo = 'trimestre') => {
     fiscal_pct_nf: summary.data?.fiscal?.percentual_nf || null,
     last_update: last.data?.last_update,
     status_dados: last.data?.status,
+    selecao: {
+      periodo,
+      ano,
+      mes: mesReferencia,
+      tri: triReferencia,
+      ano_corrente: anoCorrente,
+      mes_max_corrente: mesMaxCorrente,
+    },
   };
 };
 
