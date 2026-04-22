@@ -41,6 +41,8 @@ const saude_cfg = {
   critico: { cor: C.red, bg: "rgba(239,68,68,0.10)", label: "Crítico" },
 };
 
+const periodoLabel = (periodo) => (periodo === "mes" ? "Mês" : "Trimestre");
+
 // ─── Bar chart SVG ──────────────────────────────────────────────────────────
 function BarChart({ data, height = 120, color = C.accent }) {
   const max = Math.max(...data.flatMap((d) => [d.v1 || 0, d.v2 || 0])) * 1.1 || 1;
@@ -90,6 +92,7 @@ function Sparkline({ values, color = C.accent, height = 32 }) {
 function UnitDrawer({ unit, convRede, onClose }) {
   if (!unit) return null;
   const cfg = saude_cfg[unit.saude] || saude_cfg.ok;
+  const periodoTexto = unit.periodo === "mes" ? "Mês corrente" : "Trimestre corrente";
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} />
@@ -111,12 +114,13 @@ function UnitDrawer({ unit, convRede, onClose }) {
               {cfg.label.toUpperCase()}
             </span>
           </div>
-          <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0", fontFamily: "JetBrains Mono" }}>Trimestre corrente</p>
+          <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0", fontFamily: "JetBrains Mono" }}>{periodoTexto}</p>
         </div>
 
         <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
             {[
+              { label: "Cirurgias", val: unit.cirurgias ?? "n/d", sub: periodoTexto },
               { label: "Receita Bruta", val: fR(unit.rb, true) },
               { label: "Lucro Líquido", val: fR(unit.ll, true), sub: unit.mg_ll != null ? fP(unit.mg_ll) + " margem" : null, cor: (unit.ll || 0) >= 0 ? C.green : C.red },
               { label: "Mg. EBITDA", val: unit.mg_ebitda != null ? fP(unit.mg_ebitda) : "n/d", cor: (unit.mg_ebitda || 0) >= 0.20 ? C.green : C.amber },
@@ -132,7 +136,7 @@ function UnitDrawer({ unit, convRede, onClose }) {
             <div style={{ padding: 14, borderRadius: 10, background: cfg.bg, border: `1px solid ${cfg.cor}30` }}>
               <div style={{ fontSize: 9, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Status</div>
               <div style={{ fontSize: 18, fontFamily: "Syne", fontWeight: 700, color: cfg.cor }}>{cfg.label}</div>
-              <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Trimestre</div>
+              <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>{periodoTexto}</div>
             </div>
           </div>
 
@@ -162,6 +166,32 @@ function UnitDrawer({ unit, convRede, onClose }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PeriodoToggle({ periodo, setPeriodo }) {
+  return (
+    <div style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: C.surface, border: `1px solid ${C.border2}` }}>
+      {["mes", "trimestre"].map((p) => (
+        <button
+          key={p}
+          onClick={() => setPeriodo(p)}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 7,
+            border: "none",
+            cursor: "pointer",
+            fontSize: 11,
+            fontFamily: "JetBrains Mono",
+            fontWeight: 600,
+            color: periodo === p ? C.text : C.muted,
+            background: periodo === p ? C.surface2 : "transparent",
+          }}
+        >
+          {periodoLabel(p)}
+        </button>
+      ))}
     </div>
   );
 }
@@ -250,7 +280,7 @@ function KpiCard({ label, valor, delta, subvalor, sublabel, sparkline, accentCol
 }
 
 // ─── Linha Unidade ──────────────────────────────────────────────────────────
-function UnitRow({ u, rank, onAnalisar, compact = false }) {
+function UnitRow({ u, rank, onAnalisar, compact = false, periodo = "trimestre" }) {
   const cfg = saude_cfg[u.saude] || saude_cfg.ok;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: compact ? 8 : 12, padding: compact ? "8px 12px" : "10px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
@@ -265,7 +295,7 @@ function UnitRow({ u, rank, onAnalisar, compact = false }) {
         </>
       )}
       {compact && <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", fontWeight: 600, color: (u.ll || 0) >= 0 ? C.green : C.red, flexShrink: 0 }}>{fR(u.ll, true)}</span>}
-      <button onClick={() => onAnalisar(u)} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
+      <button onClick={() => onAnalisar({ ...u, periodo })} style={{ fontSize: 10, fontFamily: "JetBrains Mono", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,0.04)", color: C.dim, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>Analisar →</button>
     </div>
   );
 }
@@ -295,13 +325,16 @@ function AlertBadge({ a, expanded, onToggle }) {
 }
 
 // ─── Tab: Resumo ────────────────────────────────────────────────────────────
-function TabResumo({ d, onAnalisarUnidade }) {
+function TabResumo({ d, onAnalisarUnidade, periodo, setPeriodo }) {
   const [alertasAbertos, setAlertasAbertos] = useState({});
   const criticos = d.alertas.filter((a) => a.nivel === "critico").length;
   const toggle = (i) => setAlertasAbertos((p) => ({ ...p, [i]: !p[i] }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start" }}>
+        <PeriodoToggle periodo={periodo} setPeriodo={setPeriodo} />
+      </div>
       <section>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 13, fontFamily: "JetBrains Mono", color: C.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Último Mês Fechado — {d.ultimo_mes.label}</h2>
@@ -356,7 +389,7 @@ function TabResumo({ d, onAnalisarUnidade }) {
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green }} />Top 5 por Lucro Líquido
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {d.top5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={i + 1} onAnalisar={onAnalisarUnidade} compact />)}
+              {d.top5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={i + 1} onAnalisar={onAnalisarUnidade} compact periodo={periodo} />)}
             </div>
           </div>
           <div>
@@ -364,7 +397,7 @@ function TabResumo({ d, onAnalisarUnidade }) {
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.red }} />Bottom 5 — Exigem Atenção
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {d.bot5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={d.unidades.length - i} onAnalisar={onAnalisarUnidade} compact />)}
+              {d.bot5.map((u, i) => <UnitRow key={u.UNIDADE} u={u} rank={d.unidades.length - i} onAnalisar={onAnalisarUnidade} compact periodo={periodo} />)}
             </div>
           </div>
         </div>
